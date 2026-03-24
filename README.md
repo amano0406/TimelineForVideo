@@ -1,53 +1,162 @@
 # video2timeline
 
-`video2timeline` is a local-first tool that turns video files into timeline-oriented text for LLM workflows.
+Local-first video-to-timeline packaging for ChatGPT and other LLM workflows.
 
-v1 is built around:
+[日本語版 README](README.ja.md) | [Sample Timeline](docs/examples/sample-timeline.en.md) | [Third-Party Notices](THIRD_PARTY_NOTICES.md) | [Model and Runtime Notes](MODEL_AND_RUNTIME_NOTES.md) | [License](LICENSE)
 
-- `web/`: ASP.NET Core Razor Pages GUI
-- `worker/`: Python batch worker
-- `docker-compose.yml`: local orchestration
-- file-based coordination through `request.json`, `status.json`, `result.json`, and `manifest.json`
+`video2timeline` converts local video files into structured timeline packages that are easy to review, compress, and upload to ChatGPT for downstream analysis.
 
-## What It Does
+Typical use cases:
 
-- scans mounted video folders
-- accepts multi-file uploads from the GUI
-- writes one run directory per job
-- keeps original video timestamps in the final timeline
-- trims silence for ASR efficiency but stores `cut_map.json`
-- runs OCR and image captioning only when the screen meaningfully changes
-- emits `timeline.md` per media item plus LLM batch files
+- meeting review
+- conversation history analysis
+- self-review of communication patterns
+- preparing ZIP packages for ChatGPT-based summarization or longitudinal analysis
 
-## Current v1 Defaults
+## Screenshots
 
-- single `quality-first` profile
-- CPU-first implementation
-- GPU UI is intentionally not exposed yet
-- diarization uses `pyannote` only when Hugging Face token and terms confirmation are available
-- no `simple-diarizer`
-- no clean transcript rewrite step
+### Dashboard
 
-## Repo Layout
+![Dashboard](docs/screenshots/dashboard.png)
 
-```text
-video2timeline/
-  configs/
-  docker/
-  docs/
-  scripts/
-  web/
-  worker/
-  docker-compose.yml
-  start.bat
-  start.command
-  stop.bat
-  stop.command
+### Settings
+
+![Settings](docs/screenshots/settings.png)
+
+### Run Details
+
+![Run Details](docs/screenshots/run-details.png)
+
+## What It Produces
+
+For each run, the app generates:
+
+- a per-media `timeline.md`
+- raw transcript artifacts (`raw.json`, `raw.md`)
+- screen notes and screen diffs
+- `cut_map.json` to preserve original timestamps when silence trimming is used internally
+- `batch-*.md` and `timeline_index.jsonl` for LLM-facing export
+
+The intended workflow is:
+
+1. run locally
+2. review the generated timeline package
+3. download the completed run as a ZIP
+4. upload that ZIP to ChatGPT for analysis
+
+## Sample Timeline
+
+The public sample below is derived from a real generated timeline, with names and sensitive details redacted.
+
+Full sample: [docs/examples/sample-timeline.en.md](docs/examples/sample-timeline.en.md)
+
+```md
+# Video Timeline
+
+- Source: `/shared/inputs/example/customer-followup-call.mp4`
+- Media ID: `2026-03-09-12-15-56-example`
+- Duration: `70.417s`
+
+## 00:00:11.179 - 00:00:57.194
+Speech:
+SPEAKER_00: Hello, this is [PERSON_A]. I am following up about the return request for [ITEM_GROUP_A]. I would like to confirm why the expected materials were missing from the package.
+
+Screen:
+OCR detected text. Top lines: Please add more detail / Speech recognition did not catch that / OBS 32.0.4 - Profile: Untitled
+
+Screen change:
+Initial frame.
+
+## 00:00:57.174 - 00:01:03.400
+Speech:
+SPEAKER_00: Understood. Sorry about that.
+
+Screen:
+No major screen changes detected.
+
+Screen change:
+Omitted.
 ```
 
-## Runtime Layout
+## Key Behavior
 
-Each job writes to a selected output root as:
+- Local-first. No cloud transcription is required for the normal path.
+- CPU-first today. GPU engine support is planned and will be published soon.
+- Silence trimming is an internal optimization. Final timelines stay aligned to original video time.
+- OCR and image notes are emitted only when screen changes are meaningful enough to matter.
+- Diarization runs only when the required Hugging Face token and gated-model approval are available.
+- The current GUI is intentionally conservative and runs one active job at a time.
+
+## Requirements
+
+- Windows or macOS
+- Docker Desktop
+- internet access on first run for image and model downloads
+- optional Hugging Face token if you want `pyannote` diarization
+- acceptance of the required gated-model terms for `pyannote`
+
+## Quick Start
+
+Windows:
+
+```powershell
+C:\apps\video2timeline\start.bat
+```
+
+macOS:
+
+```bash
+/Users/.../video2timeline/start.command
+```
+
+Then:
+
+1. open `http://localhost:8090`
+2. go to `Settings`
+3. save your Hugging Face token if you want diarization
+4. approve the required model page
+5. upload files or choose a directory
+6. start a job
+7. download the completed ZIP package
+
+Stop:
+
+```powershell
+C:\apps\video2timeline\stop.bat
+```
+
+## Supported Input Formats
+
+Primary support:
+
+- `.mp4`
+- `.mov`
+- `.m4v`
+- `.avi`
+- `.mkv`
+- `.webm`
+
+Actual decoding depends on the `ffmpeg` build available in the runtime image.
+
+## Localization
+
+The UI header includes a language switcher.
+
+Current supported locales:
+
+- `ja`
+- `en`
+- `zh-CN`
+- `zh-TW`
+- `ko`
+- `es`
+- `fr`
+- `de`
+- `pt`
+
+Browser language is used as the default when possible. Manual selection is stored in a cookie. Supported language aliases and regional mappings are defined in [web/Resources/Locales/languages.json](web/Resources/Locales/languages.json).
+
+## Output Layout
 
 ```text
 run-YYYYMMDD-HHMMSS-xxxx/
@@ -81,148 +190,15 @@ run-YYYYMMDD-HHMMSS-xxxx/
     batch-001.md
 ```
 
-## Supported Video Extensions
+## License
 
-Primary support:
+This repository is licensed under the MIT License. See [LICENSE](LICENSE).
 
-- `.mp4`
-- `.mov`
-- `.m4v`
-- `.avi`
-- `.mkv`
-- `.webm`
+Third-party code and runtime notes:
 
-The actual decode path depends on `ffmpeg` / `ffprobe`.
+- [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
+- [MODEL_AND_RUNTIME_NOTES.md](MODEL_AND_RUNTIME_NOTES.md)
 
-## Prerequisites
+## Status
 
-For Docker usage:
-
-- Windows or macOS
-- Docker Desktop
-- internet access for first-time image and model downloads
-
-Optional:
-
-- Hugging Face token for `pyannote`
-- acceptance of the required gated model terms
-
-## One-Click Style Startup
-
-Windows:
-
-```powershell
-C:\apps\video2timeline\start.bat
-```
-
-macOS:
-
-```bash
-/Users/.../video2timeline/start.command
-```
-
-The scripts:
-
-1. verify Docker is available
-2. create `.env` from `.env.example` if needed
-3. start `web` and `worker`
-4. open `http://localhost:8090` by default
-
-Stop:
-
-```powershell
-C:\apps\video2timeline\stop.bat
-```
-
-## Default Mounted Sources
-
-`.env.example` assumes:
-
-- `VIDEO_SOURCE_1=C:\Users\amano\Videos`
-- `VIDEO_SOURCE_2=F:\Users\yutaro\Videos`
-- `VIDEO_OUTPUT_ROOT=C:\apps\video2timeline\runs`
-- `VIDEO2TIMELINE_WEB_PORT=8090`
-
-These are mounted inside containers as:
-
-- `/shared/inputs/amano`
-- `/shared/inputs/yutaro`
-- `/shared/outputs`
-
-## GUI Pages
-
-- `/`
-  - complete setup first
-  - upload files or choose a directory
-  - create one job at a time
-  - view the active job separately from completed jobs
-  - download completed jobs as ZIP
-- `/runs/{id}`
-  - progress
-  - ETA
-  - log tail
-  - generated timelines
-- `/runs/{jobId}/{mediaId}`
-  - rendered `timeline.md`
-- `/settings`
-  - Hugging Face token and terms flag
-  - model approval links
-  - approval status refresh
-
-## Localization
-
-- header language switch is available on all main pages
-- current supported locales:
-  - `ja`
-  - `en`
-  - `zh-CN`
-  - `zh-TW`
-  - `ko`
-  - `es`
-  - `fr`
-  - `de`
-  - `pt`
-- browser language is used as the default when possible
-- manual language selection is stored in a cookie
-- supported languages and regional aliases are defined in [languages.json](C:/apps/video2timeline/web/Resources/Locales/languages.json)
-- UI string dictionaries live in [Resources/Locales](C:/apps/video2timeline/web/Resources/Locales)
-
-## API Endpoints
-
-- `POST /api/scan`
-- `POST /api/uploads`
-- `POST /api/jobs`
-- `GET /api/jobs/{id}`
-- `POST /api/settings/huggingface`
-
-## Worker CLI
-
-Scan the configured mounted roots:
-
-```powershell
-$env:PYTHONPATH = "C:\apps\video2timeline\worker\src"
-python -m video2timeline_worker scan --output C:\apps\video2timeline\runs\discovery.json
-```
-
-Process one specific job:
-
-```powershell
-$env:PYTHONPATH = "C:\apps\video2timeline\worker\src"
-python -m video2timeline_worker run-job --job-dir C:\path\to\run-...
-```
-
-Run the polling daemon:
-
-```powershell
-$env:PYTHONPATH = "C:\apps\video2timeline\worker\src"
-python -m video2timeline_worker daemon --poll-interval 5
-```
-
-## Notes
-
-- silence trimming is an internal optimization; timelines remain based on original video time
-- duplicate detection uses file hash and defaults to skip
-- OCR is intentionally sparse; unchanged and minor-change frames are not expanded into full text
-- `timeline.md` is the main LLM-facing artifact
-
-See [APP_SPEC.md](C:/apps/video2timeline/docs/APP_SPEC.md) and [PIPELINE.md](C:/apps/video2timeline/docs/PIPELINE.md) for the current product shape.
+`video2timeline` v1 is stable for CPU-first local processing. GPU engine support is not part of the public release yet and is planned as a future update.
