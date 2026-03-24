@@ -2,7 +2,7 @@
 
 ChatGPT などの LLM に渡しやすい形で、ローカル動画をタイムライン化するツールです。
 
-[English README](README.md) | [サンプルタイムライン](docs/examples/sample-timeline.ja.md) | [第三者ライセンス一覧](THIRD_PARTY_NOTICES.md) | [モデル・ランタイム注意事項](MODEL_AND_RUNTIME_NOTES.md) | [ライセンス](LICENSE)
+[English README](README.md) | [サンプルタイムライン](docs/examples/sample-timeline.ja.md) | [第三者ライセンス一覧](THIRD_PARTY_NOTICES.md) | [モデル・ランタイム注意事項](MODEL_AND_RUNTIME_NOTES.md) | [安全性メモ](docs/SECURITY_AND_SAFETY.md) | [公開前チェックリスト](docs/PUBLIC_RELEASE_CHECKLIST.md) | [ライセンス](LICENSE)
 
 `video2timeline` は、ローカルにある動画ファイルを次のような用途向けに整理されたタイムライン資料へ変換します。
 

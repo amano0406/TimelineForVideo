@@ -63,6 +63,19 @@ public sealed class DashboardSmokeTests : PageTest
         await Expect(Page.Locator("pre")).ToContainTextAsync("public test sample");
     }
 
+    [TestMethod]
+    public async Task CompletedRunDetails_CanDownloadZip()
+    {
+        await SetLanguageAsync("en", $"/runs/{_fixture.CompletedJobId}");
+
+        var download = await Page.RunAndWaitForDownloadAsync(async () =>
+        {
+            await Page.GetByRole(AriaRole.Link, new() { Name = "Download ZIP" }).ClickAsync();
+        });
+
+        Assert.AreEqual($"{_fixture.CompletedJobId}.zip", download.SuggestedFilename);
+    }
+
     private async Task SetLanguageAsync(string language, string returnPath)
     {
         var encoded = Uri.EscapeDataString(returnPath);

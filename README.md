@@ -2,7 +2,7 @@
 
 Local-first video-to-timeline packaging for ChatGPT and other LLM workflows.
 
-[Japanese README](README.ja.md) | [Sample Timeline](docs/examples/sample-timeline.en.md) | [Third-Party Notices](THIRD_PARTY_NOTICES.md) | [Model and Runtime Notes](MODEL_AND_RUNTIME_NOTES.md) | [License](LICENSE)
+[Japanese README](README.ja.md) | [Sample Timeline](docs/examples/sample-timeline.en.md) | [Third-Party Notices](THIRD_PARTY_NOTICES.md) | [Model and Runtime Notes](MODEL_AND_RUNTIME_NOTES.md) | [Security And Safety](docs/SECURITY_AND_SAFETY.md) | [Release Checklist](docs/PUBLIC_RELEASE_CHECKLIST.md) | [License](LICENSE)
 
 `video2timeline` converts local video files into structured timeline packages that are easy to review, compress, and upload to ChatGPT for downstream analysis.
 
@@ -212,6 +212,13 @@ Run browser E2E tests:
 ```powershell
 C:\apps\video2timeline\scripts\test-e2e.ps1
 ```
+
+The current Playwright smoke suite covers:
+
+- dashboard visibility
+- settings flow without a token
+- completed run details
+- ZIP download from a completed run
 
 ## License
 
