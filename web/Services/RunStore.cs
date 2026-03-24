@@ -503,13 +503,14 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
         return string.IsNullOrWhiteSpace(sanitized) ? $"upload-{Guid.NewGuid():N}.bin" : sanitized;
     }
 
-    private static int DeleteUploadDirectories(JobRequestDocument? request)
+    private int DeleteUploadDirectories(JobRequestDocument? request)
     {
         if (request is null)
         {
             return 0;
         }
 
+        var uploadsRoot = Path.GetFullPath(paths.UploadsRoot);
         var deletedCount = 0;
         var directories = request.InputItems
             .Where(static item => string.Equals(item.SourceKind, "upload", StringComparison.OrdinalIgnoreCase))
@@ -523,6 +524,12 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
         foreach (var directory in directories)
         {
             if (directory is null || !Directory.Exists(directory))
+            {
+                continue;
+            }
+
+            var fullDirectory = Path.GetFullPath(directory);
+            if (!IsSubdirectoryOf(fullDirectory, uploadsRoot))
             {
                 continue;
             }
@@ -555,4 +562,16 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
             SizeBytes = source.SizeBytes,
             UploadedPath = source.UploadedPath,
         };
+
+    private static bool IsSubdirectoryOf(string candidate, string root)
+    {
+        if (string.Equals(candidate, root, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var normalizedRoot = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            + Path.DirectorySeparatorChar;
+        return candidate.StartsWith(normalizedRoot, StringComparison.OrdinalIgnoreCase);
+    }
 }

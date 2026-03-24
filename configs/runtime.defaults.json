@@ -9,15 +9,15 @@
   ],
   "inputRoots": [
     {
-      "id": "amano",
-      "displayName": "C Drive Videos",
-      "path": "/shared/inputs/amano",
+      "id": "primary",
+      "displayName": "Primary Videos",
+      "path": "/shared/inputs/primary",
       "enabled": true
     },
     {
-      "id": "yutaro",
-      "displayName": "F Drive Videos",
-      "path": "/shared/inputs/yutaro",
+      "id": "secondary",
+      "displayName": "Secondary Videos",
+      "path": "/shared/inputs/secondary",
       "enabled": true
     },
     {

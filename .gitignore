@@ -10,6 +10,10 @@ app-data/
 uploads/
 web/bin/
 web/obj/
+tests/**/bin/
+tests/**/obj/
+tests/**/TestResults/
 worker/.venv/
 worker/.pytest_cache/
 worker/__pycache__/
+output/playwright/

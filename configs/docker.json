@@ -2,13 +2,13 @@
   "project_name": "video2timeline",
   "source_directories": [
     {
-      "name": "amano_videos",
-      "path": "/data/input/amano",
+      "name": "videos_primary",
+      "path": "/data/input/primary",
       "recursive": true
     },
     {
-      "name": "yutaro_videos",
-      "path": "/data/input/yutaro",
+      "name": "videos_secondary",
+      "path": "/data/input/secondary",
       "recursive": true
     }
   ],

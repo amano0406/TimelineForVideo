@@ -20,8 +20,8 @@ class ContractsTests(unittest.TestCase):
                 InputItem(
                     input_id="scan-0001",
                     source_kind="mounted_root",
-                    source_id="amano",
-                    original_path="/shared/inputs/amano/example.mp4",
+                    source_id="primary",
+                    original_path="/shared/inputs/primary/example.mp4",
                     display_name="example.mp4",
                     size_bytes=1234,
                 )

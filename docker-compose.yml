@@ -13,11 +13,11 @@ services:
     volumes:
       - type: bind
         source: ${VIDEO_SOURCE_1}
-        target: /shared/inputs/amano
+        target: /shared/inputs/primary
         read_only: true
       - type: bind
         source: ${VIDEO_SOURCE_2}
-        target: /shared/inputs/yutaro
+        target: /shared/inputs/secondary
         read_only: true
       - type: bind
         source: ${VIDEO_OUTPUT_ROOT}
@@ -41,11 +41,11 @@ services:
     volumes:
       - type: bind
         source: ${VIDEO_SOURCE_1}
-        target: /shared/inputs/amano
+        target: /shared/inputs/primary
         read_only: true
       - type: bind
         source: ${VIDEO_SOURCE_2}
-        target: /shared/inputs/yutaro
+        target: /shared/inputs/secondary
         read_only: true
       - type: bind
         source: ${VIDEO_OUTPUT_ROOT}

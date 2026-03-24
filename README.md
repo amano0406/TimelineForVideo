@@ -2,7 +2,7 @@
 
 Local-first video-to-timeline packaging for ChatGPT and other LLM workflows.
 
-[日本語版 README](README.ja.md) | [Sample Timeline](docs/examples/sample-timeline.en.md) | [Third-Party Notices](THIRD_PARTY_NOTICES.md) | [Model and Runtime Notes](MODEL_AND_RUNTIME_NOTES.md) | [License](LICENSE)
+[Japanese README](README.ja.md) | [Sample Timeline](docs/examples/sample-timeline.en.md) | [Third-Party Notices](THIRD_PARTY_NOTICES.md) | [Model and Runtime Notes](MODEL_AND_RUNTIME_NOTES.md) | [License](LICENSE)
 
 `video2timeline` converts local video files into structured timeline packages that are easy to review, compress, and upload to ChatGPT for downstream analysis.
 
@@ -111,13 +111,15 @@ macOS:
 
 Then:
 
-1. open `http://localhost:8090`
-2. go to `Settings`
-3. save your Hugging Face token if you want diarization
-4. approve the required model page
-5. upload files or choose a directory
-6. start a job
-7. download the completed ZIP package
+1. copy `.env.example` to `.env` if you want to edit mount paths up front
+2. set your input and output paths in `.env`
+3. open `http://localhost:8090`
+4. go to `Settings`
+5. save your Hugging Face token if you want diarization
+6. approve the required model page
+7. upload files or choose a directory
+8. start a job
+9. download the completed ZIP package
 
 Stop:
 
@@ -188,6 +190,27 @@ run-YYYYMMDD-HHMMSS-xxxx/
   llm/
     timeline_index.jsonl
     batch-001.md
+```
+
+## Testing
+
+Current test coverage is intentionally lightweight:
+
+- Python worker unit tests for contracts, screen timestamping, and timeline rendering
+- Playwright-based E2E smoke tests for the ASP.NET Core UI
+- manual smoke runs with real local jobs
+
+Run worker unit tests:
+
+```powershell
+$env:PYTHONPATH="C:\apps\video2timeline\worker\src"
+python -m unittest discover C:\apps\video2timeline\worker\tests
+```
+
+Run browser E2E tests:
+
+```powershell
+C:\apps\video2timeline\scripts\test-e2e.ps1
 ```
 
 ## License

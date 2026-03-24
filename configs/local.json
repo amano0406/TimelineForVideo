@@ -2,17 +2,17 @@
   "project_name": "video2timeline",
   "source_directories": [
     {
-      "name": "amano_videos",
-      "path": "C:\\Users\\amano\\Videos",
+      "name": "videos_primary",
+      "path": "C:\\path\\to\\videos-primary",
       "recursive": true
     },
     {
-      "name": "yutaro_videos",
-      "path": "F:\\Users\\yutaro\\Videos",
+      "name": "videos_secondary",
+      "path": "D:\\path\\to\\videos-secondary",
       "recursive": true
     }
   ],
-  "output_root": "C:\\apps\\video2timeline\\runs",
+  "output_root": "C:\\path\\to\\video2timeline-runs",
   "video_extensions": [
     ".mp4",
     ".mov",
