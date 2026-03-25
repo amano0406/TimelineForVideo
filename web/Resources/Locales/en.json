@@ -50,6 +50,7 @@
   "common.zip": "ZIP",
   "common.source": "Source",
   "common.status": "Status",
+  "common.no_items": "No items to display.",
   "settings.page_title": "Settings",
   "settings.eyebrow": "Setup",
   "settings.header.description": "Save the Hugging Face token and confirm the gated-model terms here before creating any jobs.",

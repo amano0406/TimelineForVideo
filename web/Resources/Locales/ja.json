@@ -22,6 +22,7 @@
   "common.zip": "ZIP",
   "common.source": "元ファイル",
   "common.status": "ステータス",
+  "common.no_items": "表示するアイテムはありません。",
   "settings.page_title": "設定",
   "settings.eyebrow": "初期設定",
   "settings.header.description": "ジョブを作成する前に、Hugging Face token と gated model の同意をここで保存します。",

@@ -88,26 +88,28 @@
             <h2 class="section-title">@L("jobs.list.history_title")</h2>
         </div>
 
-        @if (Model.RecentRuns.Count == 0)
-        {
-            <div class="empty-state">@L("jobs.list.empty")</div>
-        }
-        else
-        {
-            <div class="table-shell">
-                <table class="app-table">
-                    <thead>
+        <div class="table-shell">
+            <table class="app-table">
+                <thead>
+                    <tr>
+                        <th>@L("common.run")</th>
+                        <th>@L("common.state")</th>
+                        <th>@L("common.progress")</th>
+                        <th>@L("common.total_size")</th>
+                        <th>@L("common.total_duration")</th>
+                        <th>@L("common.updated")</th>
+                        <th>@L("common.actions")</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (Model.RecentRuns.Count == 0)
+                    {
                         <tr>
-                            <th>@L("common.run")</th>
-                            <th>@L("common.state")</th>
-                            <th>@L("common.progress")</th>
-                            <th>@L("common.total_size")</th>
-                            <th>@L("common.total_duration")</th>
-                            <th>@L("common.updated")</th>
-                            <th>@L("common.actions")</th>
+                            <td colspan="7" class="px-4 py-8 text-center text-sm text-slate-500">@L("common.no_items")</td>
                         </tr>
-                    </thead>
-                    <tbody>
+                    }
+                    else
+                    {
                         @foreach (var run in Model.RecentRuns)
                         {
                             <tr>
@@ -132,9 +134,9 @@
                                 </td>
                             </tr>
                         }
-                    </tbody>
-                </table>
-            </div>
-        }
+                    }
+                </tbody>
+            </table>
+        </div>
     </section>
 </section>
