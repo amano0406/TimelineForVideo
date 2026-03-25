@@ -113,13 +113,13 @@ Omitted.
 Windows:
 
 ```powershell
-C:\apps\video2timeline\start.bat
+.\start.bat
 ```
 
 macOS:
 
 ```bash
-/Users/.../video2timeline/start.command
+./start.command
 ```
 
 Then:
@@ -147,7 +147,7 @@ The start script also checks:
 Stop:
 
 ```powershell
-C:\apps\video2timeline\stop.bat
+.\stop.bat
 ```
 
 ## Supported Input Formats
@@ -201,7 +201,7 @@ Current commands include:
 Example:
 
 ```powershell
-$env:PYTHONPATH="C:\apps\video2timeline\worker\src"
+$env:PYTHONPATH=".\worker\src"
 python -m video2timeline_worker settings status
 python -m video2timeline_worker settings save --token hf_xxx --terms-confirmed
 python -m video2timeline_worker jobs create --file C:\path\to\clip.mp4
@@ -257,14 +257,14 @@ Current test coverage is intentionally lightweight:
 Run worker unit tests:
 
 ```powershell
-$env:PYTHONPATH="C:\apps\video2timeline\worker\src"
-python -m unittest discover C:\apps\video2timeline\worker\tests
+$env:PYTHONPATH=".\worker\src"
+python -m unittest discover .\worker\tests
 ```
 
 Run browser E2E tests:
 
 ```powershell
-C:\apps\video2timeline\scripts\test-e2e.ps1
+.\scripts\test-e2e.ps1
 ```
 
 Enable commit-time lint checks:
