@@ -178,10 +178,9 @@ class JobStoreTests(unittest.TestCase):
             self.assertEqual(".zip", archive_path.suffix)
             with zipfile.ZipFile(archive_path) as archive:
                 names = set(archive.namelist())
-                self.assertIn("00_PACKAGE_INFO.md", names)
-                self.assertIn("00_TRANSCRIPTION_INFO.md", names)
-                self.assertIn("01_INDEX.md", names)
-                self.assertIn("01_2026-03-24 12-58-32.md", names)
+                self.assertIn("README.md", names)
+                self.assertIn("TRANSCRIPTION_INFO.md", names)
+                self.assertIn("timelines/2026-03-24 12-58-32.md", names)
 
 
 if __name__ == "__main__":

@@ -1,23 +1,27 @@
 # video2timeline
 
-手元にある動画ファイルを、ChatGPT などの LLM に渡しやすいタイムライン資料へ変換するローカルアプリです。
+手元にある動画ファイルを、ChatGPT などの LLM に渡しやすいタイムライン資料へ変換するローカルツールです。
 
-[English README](README.md) | [サンプルタイムライン](docs/examples/sample-timeline.ja.md) | [第三者ライセンス](THIRD_PARTY_NOTICES.md) | [モデルと実行メモ](MODEL_AND_RUNTIME_NOTES.md) | [セキュリティと安全性](docs/SECURITY_AND_SAFETY.md) | [公開前チェック](docs/PUBLIC_RELEASE_CHECKLIST.md) | [ライセンス](LICENSE)
+[English README](README.md) | [サンプルタイムライン](docs/examples/sample-timeline.ja.md) | [第三者ライセンス](THIRD_PARTY_NOTICES.md) | [モデルと実行環境メモ](MODEL_AND_RUNTIME_NOTES.md) | [セキュリティと安全性](docs/SECURITY_AND_SAFETY.md) | [公開前チェック](docs/PUBLIC_RELEASE_CHECKLIST.md) | [ライセンス](LICENSE)
 
-## 目的
+## このアプリがやっていること
 
-`video2timeline` の目的はシンプルです。
+このアプリは、手元にある動画ファイルを、LLM に渡しやすい ZIP 資料に変換するためのものです。
 
-1. 手元の動画ファイルを選ぶ
-2. ローカルで処理する
-3. ZIP をダウンロードする
-4. その ZIP を ChatGPT や他の LLM に渡す
+内部では、主に次のことを行います。
 
-用途の例:
+1. 動画の音声を読み取って文字にします
+2. 画面に映っている文字や内容を拾います
+3. 会話と画面の変化を時系列のタイムラインとして整理します
+4. 最終結果を ZIP にまとめます
+
+使う側がモデル名や細かい内部処理を理解する必要はありません。
+
+## どんな用途に向いているか
 
 - 会議の振り返り
-- 会話履歴の整理
-- 家族や友人との会話の見直し
+- 会話ログの分析
+- 家族や友人との会話の整理
 - 画面録画の振り返り
 - 古い動画資産のテキスト化
 
@@ -31,9 +35,9 @@
 
 ![設定](docs/screenshots/settings.png)
 
-### 新しいジョブ
+### 新規ジョブ
 
-![新しいジョブ](docs/screenshots/new-job.png)
+![新規ジョブ](docs/screenshots/new-job.png)
 
 ### ジョブ一覧
 
@@ -43,18 +47,60 @@
 
 ![ジョブ詳細](docs/screenshots/run-details.png)
 
-## 何が出力されるか
+## 基本的な流れ
 
-一番見るべきファイルは、各動画ごとの `timeline.md` です。
+1. 動画ファイルを選ぶ  
+   複数ファイルも選べます
+2. 実行する
+3. 完了まで待つ  
+   高度な AI 処理を行うため、ある程度時間がかかります
+4. ZIP をダウンロードする
+5. 必要なら、その ZIP を ChatGPT や Claude などの LLM に渡して活用する
 
-そのほかに、必要に応じて次の補助ファイルも出力されます。
+たとえば、次のような使い方ができます。
 
-- `raw.json` と `raw.md`
-- 画面メモと画面差分
-- 内部で無音カットした場合の `cut_map.json`
-- LLM 向けの `batch-*.md` と `timeline_index.jsonl`
+- 会議内容を要約する
+- 決定事項や宿題を抜き出す
+- 自分の説明の癖を振り返る
+- 会話パターンを分析する
+- 動画の蓄積を検索しやすいメモにする
 
-ChatGPT に渡す素材が欲しいだけなら、ジョブ完了後にアプリから ZIP をダウンロードしてください。
+## ZIP に入るもの
+
+ダウンロードされる ZIP は、できるだけコンパクトにしています。
+
+主に入るのは次の 3 つです。
+
+- `README.md`
+- `TRANSCRIPTION_INFO.md`
+- `timelines/<撮影日時>.md`
+
+例:
+
+```text
+video2timeline-export.zip
+  README.md
+  TRANSCRIPTION_INFO.md
+  timelines/
+    2026-03-26 18-00-00.md
+    2026-03-25 09-14-12.md
+```
+
+`timelines/` の中の Markdown が、動画ごとの最終成果物です。
+
+## 内部作業フォルダと ZIP の違い
+
+Docker 内では、処理のためにもう少し大きな作業フォルダを持っています。
+
+そこには、たとえば次のようなものが入ります。
+
+- request / status の JSON
+- worker ログ
+- 中間の文字起こしファイル
+- 画面差分メモ
+- 一時ファイル
+
+これらはアプリ内部で使うものです。普段ユーザーが見るのは、ダウンロードした ZIP の中身だけで十分です。
 
 ## クイックスタート
 
@@ -75,31 +121,31 @@ macOS:
 1. 言語を選ぶ
 2. `Settings` を開く
 3. 話者分離を使いたい場合は Hugging Face token を保存する
-4. `CPU` または `GPU` を選ぶ
+4. `CPU` か `GPU` を選ぶ
 5. 処理精度を選ぶ
 6. 新しいジョブを作る
-7. 処理完了を待つ
+7. 処理完了まで待つ
 8. ZIP をダウンロードする
 
-`start.bat` / `start.command` は、まず Google Chrome、Microsoft Edge、Brave、Chromium のいずれかで専用ウィンドウ風に開こうとします。使えない場合は通常のブラウザで開きます。
+起動スクリプトは、Google Chrome / Microsoft Edge / Brave / Chromium のいずれかで専用ウィンドウ風に開こうとします。使えない場合は通常のブラウザで開きます。
 
 ## 必要なもの
 
 - Windows または macOS
 - Docker Desktop
 - 初回のコンテナ・モデル取得用のインターネット接続
-- `pyannote` 話者分離を使う場合の Hugging Face token
+- `pyannote` 話者分離を使う場合は Hugging Face token
 - `pyannote` の利用承認
 - GPU モードを使う場合は NVIDIA GPU と Docker GPU 対応
 
 ## 計算モード
 
 - `CPU`
-  - 多くの環境で動く
+  - 幅広い環境で使える
   - 速度は遅め
 - `GPU`
-  - Docker から NVIDIA GPU が見える必要がある
-  - 主な推論処理が高速になる
+  - Docker から使える NVIDIA GPU が必要
+  - 主な AI 処理が高速になる
 
 処理精度:
 
@@ -107,11 +153,11 @@ macOS:
   - `WhisperX medium`
 - `High`
   - `WhisperX large-v3`
-  - GPU モードかつ十分な VRAM がある場合のみ利用可能
+  - GPU モードかつ十分な VRAM がある場合のみ使用可能
 
 この開発環境では `NVIDIA GeForce RTX 4070` で GPU 実行を確認しています。
 
-## 対応入力形式
+## 対応する入力形式
 
 主な対応形式:
 
@@ -122,9 +168,9 @@ macOS:
 - `.mkv`
 - `.webm`
 
-実際に読めるかどうかは、ランタイム内の `ffmpeg` に依存します。
+実際に読み込めるかどうかは、ランタイムイメージ内の `ffmpeg` に依存します。
 
-## 多言語対応
+## 言語対応
 
 対応言語:
 
@@ -138,11 +184,11 @@ macOS:
 - `de`
 - `pt`
 
-初回起動時の既定言語は英語です。選択した言語は `.env` ではなく、アプリ設定データに保存されます。
+初回起動時の既定は英語です。選択した言語は `.env` ではなくアプリ設定データに保存されます。
 
 ## CLI
 
-通常利用は GUI が前提です。CLI はスクリプト実行や直接操作向けです。
+通常利用の入口は GUI です。必要なら worker CLI も使えます。
 
 主なコマンド:
 
@@ -166,51 +212,17 @@ python -m video2timeline_worker jobs list
 python -m video2timeline_worker jobs archive --job-id run-YYYYMMDD-HHMMSS-xxxx
 ```
 
-CLI でも ZIP 形式の受け渡しに寄せたい場合は、完了後に `jobs archive` を使ってください。
-
-## 出力構成
-
-```text
-run-YYYYMMDD-HHMMSS-xxxx/
-  request.json
-  status.json
-  result.json
-  manifest.json
-  RUN_INFO.md
-  TRANSCRIPTION_INFO.md
-  NOTICE.md
-  logs/
-    worker.log
-  media/
-    <media-id>/
-      source.json
-      audio/
-        extracted.mp3
-        trimmed.mp3
-        cut_map.json
-      transcript/
-        raw.json
-        raw.md
-      screen/
-        screenshot_01.jpg
-        screenshots.jsonl
-        screen_diff.jsonl
-      timeline/
-        timeline.md
-  llm/
-    timeline_index.jsonl
-    batch-001.md
-```
+`jobs archive` を使うと、GUI でダウンロードするのと同じような ZIP 形式で出力できます。
 
 ## テスト
 
-今のテストは必要十分な範囲に絞っています。
+現在のテストは軽めです。
 
 - Python worker の unit test
 - ASP.NET Core UI の Playwright ベース smoke test
 - 実データでの手動 smoke test
 
-worker の unit test:
+worker unit test:
 
 ```powershell
 $env:PYTHONPATH=".\worker\src"
@@ -223,7 +235,7 @@ python -m unittest discover .\worker\tests
 .\scripts\test-e2e.ps1
 ```
 
-commit 時の lint を有効にする場合:
+commit 前に lint を有効にする場合:
 
 ```powershell
 git config core.hooksPath .githooks

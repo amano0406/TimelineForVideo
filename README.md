@@ -1,25 +1,29 @@
 # video2timeline
 
-Turn local video files into timeline packages that are easier to review, zip, and hand to ChatGPT or other LLM workflows.
+Turn video files you already have into timeline markdown packages that are easier to hand to ChatGPT or other LLM tools.
 
 [Japanese README](README.ja.md) | [Sample Timeline](docs/examples/sample-timeline.en.md) | [Third-Party Notices](THIRD_PARTY_NOTICES.md) | [Model and Runtime Notes](MODEL_AND_RUNTIME_NOTES.md) | [Security And Safety](docs/SECURITY_AND_SAFETY.md) | [Release Checklist](docs/PUBLIC_RELEASE_CHECKLIST.md) | [License](LICENSE)
 
-## Purpose
+## What This App Does
 
-`video2timeline` is built for a simple workflow:
+This app takes video files on your computer and turns them into a ZIP package that is easier to upload to an LLM.
 
-1. pick video files you already have
-2. run local processing
-3. download a ZIP package
-4. upload that ZIP to ChatGPT or another LLM for analysis
+Inside the app, the processing is simple:
 
-This is useful for:
+1. it listens to the speech in the video and turns it into text
+2. it checks what was on the screen and extracts useful text or screen notes
+3. it puts speech and screen changes into a timeline
+4. it puts the final result into a ZIP file
+
+You do not need to know model names or internal details to use it.
+
+## Typical Uses
 
 - meeting review
 - conversation history analysis
-- family or friend conversation review
+- family or friend conversation analysis
 - screen recording review
-- turning old video archives into structured text materials
+- turning old video archives into LLM-ready text material
 
 ## Screenshots
 
@@ -43,18 +47,59 @@ This is useful for:
 
 ![Job Details](docs/screenshots/run-details-en.png)
 
-## What You Get
+## Basic Flow
 
-The main file to read is each media item's `timeline.md`.
+1. choose your video files
+2. start processing
+3. wait for completion  
+   Advanced AI processing takes some time
+4. download the ZIP package
+5. upload that ZIP to ChatGPT, Claude, or another LLM if you want analysis
 
-Each completed job also includes supporting files such as:
+Examples of what you can ask an LLM after that:
 
-- `raw.json` and `raw.md`
-- screen notes and screen diffs
-- `cut_map.json` when silence trimming was used internally
-- `batch-*.md` and `timeline_index.jsonl` for LLM-facing export
+- summarize the meeting
+- extract decisions and action items
+- review how I explained things
+- analyze conversation patterns
+- turn video history into searchable notes
 
-If you only need something to upload to ChatGPT, use the ZIP download from the app after a job completes.
+## What Is Inside The ZIP
+
+The ZIP is intentionally compact.
+
+Most users only need:
+
+- `README.md`
+- `TRANSCRIPTION_INFO.md`
+- `timelines/<captured-datetime>.md`
+
+Example:
+
+```text
+video2timeline-export.zip
+  README.md
+  TRANSCRIPTION_INFO.md
+  timelines/
+    2026-03-26 18-00-00.md
+    2026-03-25 09-14-12.md
+```
+
+Each markdown file inside `timelines/` is one video timeline.
+
+## Internal Working Files vs ZIP Output
+
+Inside Docker, the app keeps a larger working folder for processing, logs, and intermediate files.
+
+That internal folder can contain:
+
+- request and status JSON files
+- worker logs
+- intermediate transcript files
+- screenshot notes
+- temporary processing files
+
+Those files are for the app itself. The downloadable ZIP is the reduced handoff package for LLM use.
 
 ## Quick Start
 
@@ -74,14 +119,14 @@ Then:
 
 1. choose your language
 2. open `Settings`
-3. save your Hugging Face token if you want diarization
+3. save your Hugging Face token if you want speaker diarization
 4. choose `CPU` or `GPU`
 5. choose processing quality
 6. create a new job
 7. wait for processing to finish
 8. download the ZIP package
 
-The start script tries to open a dedicated app-style window with Google Chrome, Microsoft Edge, Brave, or Chromium. If none of those are available, it falls back to a normal browser window.
+The start script tries to open an app-style window with Google Chrome, Microsoft Edge, Brave, or Chromium. If none of those are available, it falls back to a normal browser window.
 
 ## Requirements
 
@@ -166,41 +211,7 @@ python -m video2timeline_worker jobs list
 python -m video2timeline_worker jobs archive --job-id run-YYYYMMDD-HHMMSS-xxxx
 ```
 
-Use `jobs archive` after a completed run if you want the CLI flow to produce the same ZIP-style handoff used by the GUI.
-
-## Output Layout
-
-```text
-run-YYYYMMDD-HHMMSS-xxxx/
-  request.json
-  status.json
-  result.json
-  manifest.json
-  RUN_INFO.md
-  TRANSCRIPTION_INFO.md
-  NOTICE.md
-  logs/
-    worker.log
-  media/
-    <media-id>/
-      source.json
-      audio/
-        extracted.mp3
-        trimmed.mp3
-        cut_map.json
-      transcript/
-        raw.json
-        raw.md
-      screen/
-        screenshot_01.jpg
-        screenshots.jsonl
-        screen_diff.jsonl
-      timeline/
-        timeline.md
-  llm/
-    timeline_index.jsonl
-    batch-001.md
-```
+`jobs archive` creates the same reduced ZIP-style handoff package that the GUI downloads.
 
 ## Testing
 

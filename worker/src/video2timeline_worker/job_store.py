@@ -230,6 +230,8 @@ def build_run_archive(
 
 
 def _build_export_package(run_dir: Path, job_id: str, export_root: Path) -> None:
+    timelines_root = export_root / "timelines"
+    timelines_root.mkdir(parents=True, exist_ok=True)
     timelines: list[dict[str, str]] = []
     media_root = run_dir / "media"
     if media_root.exists():
@@ -259,35 +261,31 @@ def _build_export_package(run_dir: Path, job_id: str, export_root: Path) -> None
 
     transcription_info_path = run_dir / "TRANSCRIPTION_INFO.md"
     if transcription_info_path.exists():
-        shutil.copy2(transcription_info_path, export_root / "00_TRANSCRIPTION_INFO.md")
+        shutil.copy2(transcription_info_path, export_root / "TRANSCRIPTION_INFO.md")
 
     package_note = "\n".join(
         [
-            "# Export Package",
+            "# README",
+            "",
+            "This ZIP contains timeline markdown files that are ready to review or upload to an LLM such as ChatGPT.",
             "",
             f"- Job ID: `{job_id}`",
-            "- Open the numbered `.md` files.",
-            "- Each file is the timeline for one video.",
-            "- This ZIP is reduced for LLM upload and review.",
+            "- Main folder: `timelines/`",
+            "- Each markdown file is one video timeline.",
+            "- `TRANSCRIPTION_INFO.md` explains which processing and models were used.",
             "",
         ]
     )
-    (export_root / "00_PACKAGE_INFO.md").write_text(package_note, encoding="utf-8")
+    (export_root / "README.md").write_text(package_note, encoding="utf-8")
 
-    index_lines = ["# Files", ""]
-    for index, row in enumerate(timelines, start=1):
-        file_name = f"{index:02d}_{row['label']}.md"
-        destination = export_root / file_name
+    used_names: set[str] = set()
+    for row in timelines:
+        file_name = _ensure_unique_export_file_name(f"{row['label']}.md", used_names)
+        destination = timelines_root / file_name
         destination.write_text(
             Path(row["timeline_path"]).read_text(encoding="utf-8", errors="replace"),
             encoding="utf-8",
         )
-        index_lines.append(f"- `{file_name}`")
-        if row["source_path"]:
-            index_lines.append(f"  - Source: `{row['source_path']}`")
-    (export_root / "01_INDEX.md").write_text(
-        "\n".join(index_lines).rstrip() + "\n", encoding="utf-8"
-    )
 
 
 def _best_export_label(media_id: str, source_info: dict[str, Any]) -> str:
@@ -309,6 +307,17 @@ def _best_export_label(media_id: str, source_info: dict[str, Any]) -> str:
         return datetime.fromtimestamp(fallback.stat().st_mtime).strftime("%Y-%m-%d %H-%M-%S")
 
     return slugify(media_id)
+
+
+def _ensure_unique_export_file_name(file_name: str, used_names: set[str]) -> str:
+    path = Path(file_name)
+    candidate = path.name
+    suffix = 2
+    while candidate.lower() in used_names:
+        candidate = f"{path.stem}-{suffix}{path.suffix}"
+        suffix += 1
+    used_names.add(candidate.lower())
+    return candidate
 
 
 def _parse_best_effort_datetime(value: str) -> datetime | None:

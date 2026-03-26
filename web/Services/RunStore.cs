@@ -724,6 +724,8 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
     private static void BuildExportPackage(string runDirectory, string jobId, string exportRoot)
     {
         Directory.CreateDirectory(exportRoot);
+        var timelinesRoot = Path.Combine(exportRoot, "timelines");
+        Directory.CreateDirectory(timelinesRoot);
         var timelineRows = new List<(string MediaId, string Label, string TimelinePath, string SourcePath)>();
         var mediaRoot = Path.Combine(runDirectory, "media");
 
@@ -768,38 +770,30 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
         var transcriptionInfoPath = Path.Combine(runDirectory, "TRANSCRIPTION_INFO.md");
         if (File.Exists(transcriptionInfoPath))
         {
-            File.Copy(transcriptionInfoPath, Path.Combine(exportRoot, "00_TRANSCRIPTION_INFO.md"), overwrite: true);
+            File.Copy(transcriptionInfoPath, Path.Combine(exportRoot, "TRANSCRIPTION_INFO.md"), overwrite: true);
         }
 
         var packageInfo = string.Join(
             Environment.NewLine,
             [
-                "# Export Package",
+                "# README",
+                "",
+                "This ZIP contains timeline markdown files that are ready to review or upload to an LLM such as ChatGPT.",
                 "",
                 $"- Job ID: `{jobId}`",
-                "- Open the numbered `.md` files.",
-                "- Each file is the timeline for one video.",
-                "- This ZIP is reduced for LLM upload and review.",
+                "- Main folder: `timelines/`",
+                "- Each markdown file is one video timeline.",
+                "- `TRANSCRIPTION_INFO.md` explains which processing and models were used.",
                 "",
             ]);
-        File.WriteAllText(Path.Combine(exportRoot, "00_PACKAGE_INFO.md"), packageInfo);
+        File.WriteAllText(Path.Combine(exportRoot, "README.md"), packageInfo);
 
-        var indexLines = new List<string> { "# Files", string.Empty };
-        for (var index = 0; index < timelineRows.Count; index++)
+        var usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var row in timelineRows)
         {
-            var row = timelineRows[index];
-            var fileName = $"{index + 1:00}_{row.Label}.md";
-            File.Copy(row.TimelinePath, Path.Combine(exportRoot, fileName), overwrite: true);
-            indexLines.Add($"- `{fileName}`");
-            if (!string.IsNullOrWhiteSpace(row.SourcePath))
-            {
-                indexLines.Add($"  - Source: `{row.SourcePath}`");
-            }
+            var fileName = EnsureUniqueExportFileName($"{row.Label}.md", usedNames);
+            File.Copy(row.TimelinePath, Path.Combine(timelinesRoot, fileName), overwrite: true);
         }
-
-        File.WriteAllText(
-            Path.Combine(exportRoot, "01_INDEX.md"),
-            string.Join(Environment.NewLine, indexLines).TrimEnd() + Environment.NewLine);
     }
 
     private static string BestExportLabel(string mediaId, SourceInfoExportDocument? sourceInfo)
@@ -831,6 +825,22 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
         }
 
         return MakeSafeFileName(mediaId);
+    }
+
+    private static string EnsureUniqueExportFileName(string fileName, HashSet<string> usedNames)
+    {
+        var baseName = Path.GetFileNameWithoutExtension(fileName);
+        var extension = Path.GetExtension(fileName);
+        var candidate = fileName;
+        var suffix = 2;
+
+        while (!usedNames.Add(candidate))
+        {
+            candidate = $"{baseName}-{suffix}{extension}";
+            suffix++;
+        }
+
+        return candidate;
     }
 
     private static bool TryParseBestEffortDateTime(string value, out DateTime parsed)
