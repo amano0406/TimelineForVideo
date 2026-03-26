@@ -1,21 +1,31 @@
 # video2timeline
 
-Local-first video-to-timeline packaging for ChatGPT and other LLM workflows.
+Turn local video files into timeline packages that are easier to review, zip, and hand to ChatGPT or other LLM workflows.
 
 [Japanese README](README.ja.md) | [Sample Timeline](docs/examples/sample-timeline.en.md) | [Third-Party Notices](THIRD_PARTY_NOTICES.md) | [Model and Runtime Notes](MODEL_AND_RUNTIME_NOTES.md) | [Security And Safety](docs/SECURITY_AND_SAFETY.md) | [Release Checklist](docs/PUBLIC_RELEASE_CHECKLIST.md) | [License](LICENSE)
 
-`video2timeline` converts local video files into structured timeline packages that are easy to review, compress, and upload to ChatGPT for downstream analysis.
+## Purpose
 
-The primary goal of this project is to make existing video assets usable by LLMs efficiently. In practice, that means turning local video files into structured text-first materials that can be reviewed, zipped, and handed to ChatGPT or other LLM workflows for analysis.
+`video2timeline` is built for a simple workflow:
 
-Typical use cases:
+1. pick video files you already have
+2. run local processing
+3. download a ZIP package
+4. upload that ZIP to ChatGPT or another LLM for analysis
+
+This is useful for:
 
 - meeting review
 - conversation history analysis
-- self-review of communication patterns
-- preparing ZIP packages for ChatGPT-based summarization or longitudinal analysis
+- family or friend conversation review
+- screen recording review
+- turning old video archives into structured text materials
 
 ## Screenshots
+
+### Language
+
+![Language](docs/screenshots/language-en.png)
 
 ### Settings
 
@@ -29,84 +39,22 @@ Typical use cases:
 
 ![Jobs](docs/screenshots/jobs-en.png)
 
-### Run Details
+### Job Details
 
-![Run Details](docs/screenshots/run-details-en.png)
+![Job Details](docs/screenshots/run-details-en.png)
 
-## What It Produces
+## What You Get
 
-For each run, the app generates:
+The main file to read is each media item's `timeline.md`.
 
-- a per-media `timeline.md`
-- raw transcript artifacts (`raw.json`, `raw.md`)
+Each completed job also includes supporting files such as:
+
+- `raw.json` and `raw.md`
 - screen notes and screen diffs
-- `cut_map.json` to preserve original timestamps when silence trimming is used internally
+- `cut_map.json` when silence trimming was used internally
 - `batch-*.md` and `timeline_index.jsonl` for LLM-facing export
 
-The intended workflow is:
-
-1. run locally
-2. review the generated timeline package
-3. download the completed run as a ZIP
-4. upload that ZIP to ChatGPT for analysis
-
-## Sample Timeline
-
-The public sample below is derived from a real generated timeline, with names and sensitive details redacted.
-
-Full sample: [docs/examples/sample-timeline.en.md](docs/examples/sample-timeline.en.md)
-
-```md
-# Video Timeline
-
-- Source: `/shared/inputs/example/customer-followup-call.mp4`
-- Media ID: `2026-03-09-12-15-56-example`
-- Duration: `70.417s`
-
-## 00:00:11.179 - 00:00:57.194
-Speech:
-SPEAKER_00: Hello, this is [PERSON_A]. I am following up about the return request for [ITEM_GROUP_A]. I would like to confirm why the expected materials were missing from the package.
-
-Screen:
-OCR detected text. Top lines: Please add more detail / Speech recognition did not catch that / OBS 32.0.4 - Profile: Untitled
-
-Screen change:
-Initial frame.
-
-## 00:00:57.174 - 00:01:03.400
-Speech:
-SPEAKER_00: Understood. Sorry about that.
-
-Screen:
-No major screen changes detected.
-
-Screen change:
-Omitted.
-```
-
-## Key Behavior
-
-- Local-first. No cloud transcription is required for the normal path.
-- CPU and GPU modes are both available. GPU mode is faster when the worker has NVIDIA Docker GPU access.
-- Silence trimming is an internal optimization. Final timelines stay aligned to original video time.
-- OCR and image notes are emitted only when screen changes are meaningful enough to matter.
-- Diarization runs only when the required Hugging Face token and gated-model approval are available.
-- The current GUI is intentionally conservative and runs one active job at a time.
-
-## Interfaces
-
-- GUI is the primary interface for normal use.
-- A worker-side CLI is also available for power users and automation.
-- GUI and CLI both produce the same run-directory artifacts (`request.json`, `status.json`, `result.json`, `timeline.md`, `batch-*.md`).
-
-## Requirements
-
-- Windows or macOS
-- Docker Desktop
-- internet access on first run for image and model downloads
-- optional Hugging Face token if you want `pyannote` diarization
-- acceptance of the required gated-model terms for `pyannote`
-- NVIDIA GPU + Docker GPU support if you want GPU mode
+If you only need something to upload to ChatGPT, use the ZIP download from the app after a job completes.
 
 ## Quick Start
 
@@ -124,39 +72,44 @@ macOS:
 
 Then:
 
-1. `start.bat` / `start.command` creates `.env` automatically if it does not exist
-2. open `http://localhost:38090`
-3. complete `Settings` first
-4. choose `CPU` or `GPU` mode in `Settings`
-5. save your Hugging Face token if you want diarization
-6. approve the required model page
-7. upload files or choose a directory
-8. start a job
-9. download the completed ZIP package
+1. choose your language
+2. open `Settings`
+3. save your Hugging Face token if you want diarization
+4. choose `CPU` or `GPU`
+5. choose processing quality
+6. create a new job
+7. wait for processing to finish
+8. download the ZIP package
 
-`start.bat` / `start.command` first try to open a dedicated app-style window with Microsoft Edge, Google Chrome, Brave, or Chromium. If none of those are installed, the app opens in the normal default browser.
+The start script tries to open a dedicated app-style window with Google Chrome, Microsoft Edge, Brave, or Chromium. If none of those are available, it falls back to a normal browser window.
 
-The start script also checks:
+## Requirements
 
-- whether Docker Desktop is installed
-- whether the Docker engine is actually running
-- whether `web` and `worker` both reach a running state
-- whether the local web UI responds before the browser is opened
-- whether an NVIDIA GPU is present, and if so, it starts the worker with GPU access enabled
+- Windows or macOS
+- Docker Desktop
+- internet access on first run for container and model downloads
+- optional Hugging Face token for `pyannote` diarization
+- required gated-model approval for `pyannote`
+- NVIDIA GPU plus Docker GPU access if you want GPU mode
 
-Stop:
+## Compute Modes
 
-```powershell
-.\stop.bat
-```
+- `CPU`
+  - works on more machines
+  - slower
+- `GPU`
+  - requires NVIDIA GPU support inside Docker
+  - faster for the main ML workloads
 
-Uninstall:
+Processing quality:
 
-```powershell
-.\uninstall.bat
-```
+- `Standard`
+  - `WhisperX medium`
+- `High`
+  - `WhisperX large-v3`
+  - available only when GPU mode is enabled and enough VRAM is detected
 
-The uninstall script asks for confirmation before it removes Docker resources. It also asks separately whether you want to delete the saved app-data volume. That volume contains the saved Hugging Face token and app settings.
+In this development environment, GPU execution was verified on `NVIDIA GeForce RTX 4070` with Docker GPU access.
 
 ## Supported Input Formats
 
@@ -169,16 +122,14 @@ Primary support:
 - `.mkv`
 - `.webm`
 
-Actual decoding depends on the `ffmpeg` build available in the runtime image.
+Actual decoding still depends on the `ffmpeg` build inside the runtime image.
 
 ## Localization
 
-You can change the app language in `Settings`.
+Supported locales:
 
-Current supported locales:
-
-- `ja`
 - `en`
+- `ja`
 - `zh-CN`
 - `zh-TW`
 - `ko`
@@ -187,13 +138,13 @@ Current supported locales:
 - `de`
 - `pt`
 
-English is the default on first launch. Manual selection is stored in a cookie. Supported language aliases and regional mappings are defined in [web/Resources/Locales/languages.json](web/Resources/Locales/languages.json).
+English is the default on first launch. The selected language is stored in the app settings data, not in `.env`.
 
 ## CLI
 
-The repository also includes a worker CLI for direct local execution and automation.
+The GUI is the main entry point. A worker CLI is also available for scripting and direct local execution.
 
-Current commands include:
+Common commands:
 
 - `settings status`
 - `settings save`
@@ -202,10 +153,6 @@ Current commands include:
 - `jobs show`
 - `jobs run`
 - `jobs archive`
-- `scan`
-- `compare-images`
-- `run-job`
-- `daemon`
 
 Example:
 
@@ -219,9 +166,7 @@ python -m video2timeline_worker jobs list
 python -m video2timeline_worker jobs archive --job-id run-YYYYMMDD-HHMMSS-xxxx
 ```
 
-The GUI remains the recommended public entry point. The CLI can create and run the same job contract directly from local files, directories, or configured source roots, and is intended for scripting, debugging, and power-user workflows.
-
-If you want the CLI flow to match the GUI packaging flow, use `jobs archive` after a completed run. That command creates a ZIP package for the selected job so it can be handed to ChatGPT or another LLM workflow.
+Use `jobs archive` after a completed run if you want the CLI flow to produce the same ZIP-style handoff used by the GUI.
 
 ## Output Layout
 
@@ -261,7 +206,7 @@ run-YYYYMMDD-HHMMSS-xxxx/
 
 Current test coverage is intentionally lightweight:
 
-- Python worker unit tests for contracts, screen timestamping, and timeline rendering
+- Python worker unit tests
 - Playwright-based E2E smoke tests for the ASP.NET Core UI
 - manual smoke runs with real local jobs
 
@@ -284,23 +229,6 @@ Enable commit-time lint checks:
 git config core.hooksPath .githooks
 ```
 
-The current Playwright smoke suite covers:
-
-- root redirect into the gated job flow
-- settings page rendering and theme options
-- jobs list rendering with completed runs
-- completed run details
-- ZIP download from a completed run
-
 ## License
 
 This repository is licensed under the MIT License. See [LICENSE](LICENSE).
-
-Third-party code and runtime notes:
-
-- [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
-- [MODEL_AND_RUNTIME_NOTES.md](MODEL_AND_RUNTIME_NOTES.md)
-
-## Status
-
-`video2timeline` v1 is stable for local processing. In this development environment, GPU execution was verified on `NVIDIA GeForce RTX 4070`, driver `560.94`, with Docker GPU access available.
