@@ -15,9 +15,10 @@ public sealed class HuggingFaceAccessService(
     private const string PyannoteApprovalUrl = "https://huggingface.co/pyannote/speaker-diarization-community-1";
     private const string PyannoteResolveUrl =
         "https://huggingface.co/pyannote/speaker-diarization-community-1/resolve/main/config.yaml";
-    private const string WhisperxModelId = "whisperx-medium";
+    private const string WhisperxMediumModelId = "whisperx-medium";
+    private const string WhisperxLargeModelId = "whisperx-large-v3";
     private const string EasyOcrModelId = "easyocr";
-    private const string FlorenceModelId = "florence-2-base";
+    private const string FlorenceBaseModelId = "florence-2-base";
     private const string TesseractModelId = "tesseract-ocr";
 
     private readonly string? _overrideState = configuration["VIDEO2TIMELINE_HF_ACCESS_OVERRIDE"];
@@ -26,6 +27,10 @@ public sealed class HuggingFaceAccessService(
     {
         var settings = await settingsStore.LoadAsync(cancellationToken);
         var hasToken = await settingsStore.HasTokenAsync(cancellationToken);
+        var isHighQuality = string.Equals(
+            settings.ProcessingQuality,
+            "high",
+            StringComparison.OrdinalIgnoreCase);
         var snapshot = new HuggingFaceAccessSnapshot
         {
             HasToken = hasToken,
@@ -42,9 +47,12 @@ public sealed class HuggingFaceAccessService(
                     TokenConfigured = hasToken,
                     TermsConfirmed = settings.HuggingfaceTermsConfirmed,
                 },
-                CreateUngatedModel(WhisperxModelId, "WhisperX medium", "Speech transcription"),
+                CreateUngatedModel(
+                    isHighQuality ? WhisperxLargeModelId : WhisperxMediumModelId,
+                    isHighQuality ? "WhisperX large-v3" : "WhisperX medium",
+                    "Speech transcription"),
                 CreateUngatedModel(EasyOcrModelId, "EasyOCR", "Screen text OCR"),
-                CreateUngatedModel(FlorenceModelId, "Florence-2 base", "Screen description"),
+                CreateUngatedModel(FlorenceBaseModelId, "Florence-2 base", "Screen description"),
                 CreateUngatedModel(TesseractModelId, "Tesseract OCR", "OCR fallback"),
             ],
         };

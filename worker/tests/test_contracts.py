@@ -14,6 +14,8 @@ class ContractsTests(unittest.TestCase):
             output_root_id="default",
             output_root_path="/shared/outputs/default",
             profile="quality-first",
+            compute_mode="gpu",
+            processing_quality="high",
             reprocess_duplicates=False,
             token_enabled=True,
             input_items=[
@@ -33,6 +35,8 @@ class ContractsTests(unittest.TestCase):
 
         self.assertEqual("run-123", restored.job_id)
         self.assertEqual("quality-first", restored.profile)
+        self.assertEqual("gpu", restored.compute_mode)
+        self.assertEqual("high", restored.processing_quality)
         self.assertEqual(1, len(restored.input_items))
         self.assertEqual("example.mp4", restored.input_items[0].display_name)
 

@@ -369,6 +369,8 @@ def create_job(
         output_root_id=str(output_root.get("id") or "runs"),
         output_root_path=str(output_root_path),
         profile="quality-first",
+        compute_mode=str(settings.get("computeMode") or "cpu").strip().lower(),
+        processing_quality=str(settings.get("processingQuality") or "standard").strip().lower(),
         reprocess_duplicates=reprocess_duplicates,
         token_enabled=bool(load_huggingface_token()),
         input_items=input_items,
@@ -423,6 +425,8 @@ def settings_snapshot(settings: dict[str, Any] | None = None) -> dict[str, Any]:
         "has_token": bool(token),
         "terms_confirmed": bool(settings.get("huggingfaceTermsConfirmed", False)),
         "ready": bool(token) and bool(settings.get("huggingfaceTermsConfirmed", False)),
+        "compute_mode": str(settings.get("computeMode") or "cpu"),
+        "processing_quality": str(settings.get("processingQuality") or "standard"),
         "input_roots": _enabled_input_roots(settings),
         "output_roots": _enabled_output_root_list(settings),
     }

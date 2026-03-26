@@ -53,6 +53,7 @@ def load_settings() -> dict[str, Any]:
             "videoExtensions": defaults.get("videoExtensions", []),
             "huggingfaceTermsConfirmed": False,
             "computeMode": "cpu",
+            "processingQuality": "standard",
             "uiLanguage": "en",
         }
     payload["inputRoots"] = [
@@ -74,6 +75,11 @@ def load_settings() -> dict[str, Any]:
     payload["computeMode"] = str(payload.get("computeMode") or "cpu").strip().lower()
     if payload["computeMode"] not in {"cpu", "gpu"}:
         payload["computeMode"] = "cpu"
+    payload["processingQuality"] = (
+        str(payload.get("processingQuality") or "standard").strip().lower()
+    )
+    if payload["processingQuality"] not in {"standard", "high"}:
+        payload["processingQuality"] = "standard"
     payload["uiLanguage"] = str(payload.get("uiLanguage") or "en").strip() or "en"
     return payload
 

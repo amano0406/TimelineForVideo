@@ -23,10 +23,10 @@ from .fs_utils import (
     write_text,
 )
 from .hashing import sha256_file
-from .screens import extract_screens
+from .screens import extract_screens, resolve_caption_model_id_for_quality
 from .settings import load_settings
 from .timeline import render_timeline
-from .transcribe import transcribe_audio
+from .transcribe import resolve_model_name_for_quality, transcribe_audio
 
 _ITEM_STAGE_BOUNDS: dict[str, tuple[float, float]] = {
     "extract_audio": (0.0, 0.12),
@@ -199,6 +199,8 @@ def _completed_progress_percent(
 
 
 def _write_support_docs(job_dir: Path, request: JobRequest) -> None:
+    model_name = resolve_model_name_for_quality(request.processing_quality)
+    caption_model_id = resolve_caption_model_id_for_quality(request.processing_quality)
     run_info = "\n".join(
         [
             "# Run Info",
@@ -206,6 +208,8 @@ def _write_support_docs(job_dir: Path, request: JobRequest) -> None:
             f"- Job ID: `{request.job_id}`",
             f"- Created At: `{request.created_at}`",
             f"- Profile: `{request.profile}`",
+            f"- Compute Mode: `{request.compute_mode}`",
+            f"- Processing Quality: `{request.processing_quality}`",
             f"- Input Count: `{len(request.input_items)}`",
             f"- Reprocess Duplicates: `{request.reprocess_duplicates}`",
             "",
@@ -217,10 +221,10 @@ def _write_support_docs(job_dir: Path, request: JobRequest) -> None:
         [
             "# Transcription Info",
             "",
-            "- Audio transcription: `whisperx` with `medium`, `ja`, CPU `int8`",
+            f"- Audio transcription: `whisperx` with `{model_name}`, `ja`, requested `{request.compute_mode}`",
             "- Diarization: `pyannote` only when Hugging Face token and terms confirmation are available",
             "- OCR: `EasyOCR`",
-            "- Image caption: `Florence-2 base` when available",
+            f"- Image caption: `{caption_model_id}` when available",
             "- Notes:",
             "  - `raw` outputs are preserved.",
             "  - OCR runs only for major visual changes.",
@@ -381,6 +385,8 @@ def _process_one_item(
         trimmed_audio_path=trimmed_audio_path,
         transcript_dir=transcript_dir,
         cut_map=cut_map,
+        compute_mode=request.compute_mode,
+        processing_quality=request.processing_quality,
     )
     if on_stage:
         on_stage("screen_extract", "Extracting screenshots and OCR notes.")
@@ -389,6 +395,8 @@ def _process_one_item(
         screen_dir=screen_dir,
         duration_seconds=manifest_item.duration_seconds,
         thresholds=thresholds,
+        compute_mode=request.compute_mode,
+        processing_quality=request.processing_quality,
     )
     if on_stage:
         on_stage("timeline_render", "Rendering timeline markdown.")
@@ -436,7 +444,7 @@ def process_job(job_dir: Path | None = None) -> bool:
 
     started = monotonic()
     warnings: list[str] = []
-    compute_mode = str(load_settings().get("computeMode") or "cpu").lower()
+    compute_mode = str(request.compute_mode or "cpu").lower()
     catalog = load_catalog(Path(request.output_root_path))
     manifest_items: list[ManifestItem] = []
     appended_catalog_rows: list[dict[str, Any]] = []

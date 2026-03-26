@@ -37,6 +37,9 @@ public sealed class AppSettingsDocument
     [JsonPropertyName("computeMode")]
     public string ComputeMode { get; set; } = "cpu";
 
+    [JsonPropertyName("processingQuality")]
+    public string ProcessingQuality { get; set; } = "standard";
+
     [JsonPropertyName("uiLanguage")]
     public string UiLanguage { get; set; } = "en";
 }
@@ -217,6 +220,12 @@ public sealed class WorkerCapabilitySnapshot
     [JsonPropertyName("deviceNames")]
     public List<string> DeviceNames { get; set; } = [];
 
+    [JsonPropertyName("deviceMemoryGiB")]
+    public List<double> DeviceMemoryGiB { get; set; } = [];
+
+    [JsonPropertyName("maxGpuMemoryGiB")]
+    public double MaxGpuMemoryGiB { get; set; }
+
     [JsonPropertyName("message")]
     public string Message { get; set; } = "";
 }
@@ -294,6 +303,12 @@ public sealed class JobRequestDocument
 
     [JsonPropertyName("profile")]
     public string Profile { get; set; } = "quality-first";
+
+    [JsonPropertyName("compute_mode")]
+    public string ComputeMode { get; set; } = "cpu";
+
+    [JsonPropertyName("processing_quality")]
+    public string ProcessingQuality { get; set; } = "standard";
 
     [JsonPropertyName("reprocess_duplicates")]
     public bool ReprocessDuplicates { get; set; }

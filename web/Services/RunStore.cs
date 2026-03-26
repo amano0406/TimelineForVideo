@@ -123,6 +123,8 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
             inputItems,
             command.ReprocessDuplicates,
             hasToken,
+            settings.ComputeMode,
+            settings.ProcessingQuality,
             cancellationToken);
     }
 
@@ -167,6 +169,8 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
             existingRequest.InputItems.Select(CloneInputItem).ToList(),
             existingRequest.ReprocessDuplicates,
             hasToken,
+            existingRequest.ComputeMode,
+            existingRequest.ProcessingQuality,
             cancellationToken);
     }
 
@@ -449,6 +453,8 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
         IReadOnlyList<InputItemDocument> inputItems,
         bool reprocessDuplicates,
         bool hasToken,
+        string computeMode,
+        string processingQuality,
         CancellationToken cancellationToken)
     {
         var jobId = $"run-{DateTimeOffset.Now:yyyyMMdd-HHmmss}-{Guid.NewGuid():N}"[..28];
@@ -466,6 +472,8 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
             OutputRootId = outputRoot.Id,
             OutputRootPath = outputRoot.Path,
             Profile = "quality-first",
+            ComputeMode = string.Equals(computeMode, "gpu", StringComparison.OrdinalIgnoreCase) ? "gpu" : "cpu",
+            ProcessingQuality = string.Equals(processingQuality, "high", StringComparison.OrdinalIgnoreCase) ? "high" : "standard",
             ReprocessDuplicates = reprocessDuplicates,
             TokenEnabled = hasToken,
             InputItems = inputItems.Select(CloneInputItem).ToList(),

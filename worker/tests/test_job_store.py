@@ -77,6 +77,8 @@ class JobStoreTests(unittest.TestCase):
                     "inputRoots": [],
                     "outputRoots": [{"id": "runs", "path": str(runs_root), "enabled": True}],
                     "huggingfaceTermsConfirmed": True,
+                    "computeMode": "gpu",
+                    "processingQuality": "high",
                 }
                 save_settings(settings)
                 save_huggingface_token("hf_test_value")
@@ -92,6 +94,8 @@ class JobStoreTests(unittest.TestCase):
                 request = json.loads((run_dir / "request.json").read_text(encoding="utf-8"))
                 self.assertEqual(job_id, request["job_id"])
                 self.assertTrue(request["token_enabled"])
+                self.assertEqual("gpu", request["compute_mode"])
+                self.assertEqual("high", request["processing_quality"])
 
     def test_list_runs_returns_created_job(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

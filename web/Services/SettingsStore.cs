@@ -136,6 +136,12 @@ public sealed class SettingsStore(AppPaths paths)
             _ => "cpu",
         };
 
+        value.ProcessingQuality = value.ProcessingQuality?.Trim().ToLowerInvariant() switch
+        {
+            "high" => "high",
+            _ => "standard",
+        };
+
         value.UiLanguage = value.UiLanguage?.Trim() switch
         {
             { Length: > 0 } language => language,

@@ -42,6 +42,8 @@ def parse_args() -> argparse.Namespace:
     )
     settings_save.add_argument("--token", type=str, required=False)
     settings_save.add_argument("--terms-confirmed", action="store_true")
+    settings_save.add_argument("--compute-mode", choices=["cpu", "gpu"], required=False)
+    settings_save.add_argument("--processing-quality", choices=["standard", "high"], required=False)
     settings_save.add_argument("--json", action="store_true")
 
     jobs_parser = subparsers.add_parser("jobs", help="Create or inspect jobs.")
@@ -185,6 +187,18 @@ def _write_worker_capabilities() -> None:
             if torch.cuda.is_available()
             else []
         )
+        payload["deviceMemoryGiB"] = (
+            [
+                round(
+                    torch.cuda.get_device_properties(index).total_memory / 1024 / 1024 / 1024,
+                    1,
+                )
+                for index in range(torch.cuda.device_count())
+            ]
+            if torch.cuda.is_available()
+            else []
+        )
+        payload["maxGpuMemoryGiB"] = max(payload["deviceMemoryGiB"], default=0.0)
         payload["message"] = (
             "GPU is available to the worker."
             if payload["gpuAvailable"]
@@ -222,10 +236,20 @@ def cmd_settings_status(as_json: bool) -> int:
     return 0
 
 
-def cmd_settings_save(token: str | None, terms_confirmed: bool, as_json: bool) -> int:
+def cmd_settings_save(
+    token: str | None,
+    terms_confirmed: bool,
+    compute_mode: str | None,
+    processing_quality: str | None,
+    as_json: bool,
+) -> int:
     settings = load_settings()
     if token is not None:
         save_huggingface_token(token)
+    if compute_mode is not None:
+        settings["computeMode"] = compute_mode
+    if processing_quality is not None:
+        settings["processingQuality"] = processing_quality
     settings["huggingfaceTermsConfirmed"] = terms_confirmed
     save_settings(settings)
     _print_payload(settings_snapshot(settings), as_json)
@@ -349,7 +373,13 @@ def main() -> int:
             return cmd_settings_status(args.json)
         if args.settings_command == "save":
             token = args.token if args.token is not None else load_huggingface_token()
-            return cmd_settings_save(token, args.terms_confirmed, args.json)
+            return cmd_settings_save(
+                token,
+                args.terms_confirmed,
+                args.compute_mode,
+                args.processing_quality,
+                args.json,
+            )
     if args.command == "jobs":
         if args.jobs_command == "list":
             return cmd_jobs_list(args.json)

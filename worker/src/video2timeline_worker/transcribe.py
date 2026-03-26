@@ -10,6 +10,14 @@ from .fs_utils import now_iso, write_text
 from .settings import load_huggingface_token, load_settings
 
 
+def normalize_processing_quality(value: str | None) -> str:
+    return "high" if str(value or "").strip().lower() == "high" else "standard"
+
+
+def resolve_model_name_for_quality(value: str | None) -> str:
+    return "large-v3" if normalize_processing_quality(value) == "high" else "medium"
+
+
 @dataclass
 class SegmentRecord:
     index: int
@@ -88,6 +96,7 @@ def _render_markdown(
         "## Metadata",
         "",
         f"- Model: `{metadata['model']}`",
+        f"- Processing quality: `{metadata.get('processing_quality', 'standard')}`",
         f"- Language: `{metadata['language']}`",
         f"- Device: `{metadata['device']}`",
         f"- Requested compute mode: `{metadata.get('requested_compute_mode', 'cpu')}`",
@@ -118,6 +127,8 @@ def transcribe_audio(
     trimmed_audio_path: Path,
     transcript_dir: Path,
     cut_map: list[dict[str, float]],
+    compute_mode: str | None = None,
+    processing_quality: str | None = None,
 ) -> dict[str, Any]:
     settings = load_settings()
     token = load_huggingface_token()
@@ -132,7 +143,8 @@ def transcribe_audio(
             "status": "error",
             "error": f"whisperx is not available: {exc}",
             "generated_at": now_iso(),
-            "model": "medium",
+            "model": resolve_model_name_for_quality(processing_quality),
+            "processing_quality": normalize_processing_quality(processing_quality),
             "device": "cpu",
             "compute_type": "int8",
             "language": "ja",
@@ -148,13 +160,16 @@ def transcribe_audio(
         write_text(transcript_dir / "raw.md", _render_markdown(source_name, payload, []))
         return payload
 
-    requested_compute_mode = str(settings.get("computeMode") or "cpu").lower()
+    requested_compute_mode = str(compute_mode or settings.get("computeMode") or "cpu").lower()
     gpu_available = torch.cuda.is_available()
     device = "cuda" if requested_compute_mode == "gpu" and gpu_available else "cpu"
     effective_compute_mode = "gpu" if device == "cuda" else "cpu"
     compute_type = "float16" if device == "cuda" else "int8"
     batch_size = 16 if device == "cuda" else 8
-    model_name = "medium"
+    resolved_quality = normalize_processing_quality(
+        processing_quality or settings.get("processingQuality")
+    )
+    model_name = resolve_model_name_for_quality(resolved_quality)
     language = "ja"
     try:
         model = whisperx.load_model(
@@ -217,6 +232,7 @@ def transcribe_audio(
         "status": "ok",
         "generated_at": now_iso(),
         "model": model_name,
+        "processing_quality": resolved_quality,
         "device": device,
         "requested_compute_mode": requested_compute_mode,
         "effective_compute_mode": effective_compute_mode,

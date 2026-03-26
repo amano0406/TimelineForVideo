@@ -35,7 +35,7 @@ public sealed class DashboardSmokeTests : PageTest
     }
 
     [TestMethod]
-    public async Task Settings_Shows_Save_Button_And_Theme_Options()
+    public async Task Settings_Shows_Save_Button_And_ProcessingQuality()
     {
         await Page.GotoAsync($"{_fixture.BaseUrl}/settings");
 
@@ -43,6 +43,17 @@ public sealed class DashboardSmokeTests : PageTest
         await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Settings" })).ToBeVisibleAsync();
         await Expect(Page.GetByRole(AriaRole.Button, new() { Name = "Save And Continue" })).ToBeVisibleAsync();
         await Expect(Page.GetByLabel("Language")).ToBeVisibleAsync();
+        await Expect(Page.GetByText("Processing Quality")).ToBeVisibleAsync();
+    }
+
+    [TestMethod]
+    public async Task Settings_Localizes_SavedModels_Section_In_Japanese()
+    {
+        await Page.GotoAsync($"{_fixture.BaseUrl}/settings?lang=ja");
+
+        await Expect(Page.Locator("html")).ToHaveAttributeAsync("lang", "ja");
+        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "保存済みモデル" })).ToBeVisibleAsync();
+        await Expect(Page.GetByText("Saved Models", new() { Exact = true })).ToHaveCountAsync(0);
     }
 
     [TestMethod]

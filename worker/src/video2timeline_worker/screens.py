@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import json
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 from .config import ChangeDetectionConfig
 from .ffmpeg_utils import extract_frame
 from .fs_utils import ensure_dir
-from .settings import load_settings
 
 
 def candidate_timestamps(duration_seconds: float) -> list[float]:
@@ -31,38 +31,64 @@ def candidate_timestamps(duration_seconds: float) -> list[float]:
     return timestamps or [0.0]
 
 
-def _load_ocr_components() -> tuple[Any | None, Any | None]:
-    settings = load_settings()
+def normalize_processing_quality(value: str | None) -> str:
+    return "high" if str(value or "").strip().lower() == "high" else "standard"
+
+
+def resolve_caption_model_id_for_quality(value: str | None) -> str:
+    _ = normalize_processing_quality(value)
+    return "florence-community/Florence-2-base"
+
+
+@lru_cache(maxsize=2)
+def _load_easyocr_reader(use_gpu: bool) -> Any | None:
+    try:
+        import easyocr
+    except Exception:
+        return None
+
+    return easyocr.Reader(["ja", "en"], gpu=use_gpu, verbose=False)
+
+
+@lru_cache(maxsize=4)
+def _load_florence_captioner(model_id: str, device: str) -> dict[str, Any] | None:
+    try:
+        import torch
+        from transformers import AutoModelForImageTextToText, AutoProcessor
+    except Exception:
+        return None
+
+    model_kwargs: dict[str, Any] = {"trust_remote_code": True}
+    if device == "cuda":
+        model_kwargs["dtype"] = torch.float16
+
+    processor = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
+    model = AutoModelForImageTextToText.from_pretrained(model_id, **model_kwargs)
+    model = model.to(device)
+    model.eval()
+    return {
+        "model_id": model_id,
+        "device": device,
+        "processor": processor,
+        "model": model,
+    }
+
+
+def _load_ocr_components(
+    *, compute_mode: str | None, processing_quality: str | None
+) -> tuple[Any | None, Any | None]:
     use_gpu = False
     try:
         import torch
 
-        use_gpu = (
-            str(settings.get("computeMode") or "cpu").lower() == "gpu" and torch.cuda.is_available()
-        )
+        use_gpu = str(compute_mode or "cpu").lower() == "gpu" and torch.cuda.is_available()
     except Exception:
         use_gpu = False
 
-    try:
-        import easyocr
-    except Exception:
-        easyocr = None
+    caption_model_id = resolve_caption_model_id_for_quality(processing_quality)
 
-    try:
-        from transformers import pipeline
-    except Exception:
-        pipeline = None
-
-    reader = easyocr.Reader(["ja", "en"], gpu=use_gpu, verbose=False) if easyocr else None
-    captioner = (
-        pipeline(
-            "image-to-text",
-            model="florence-community/Florence-2-base",
-            device=0 if use_gpu else -1,
-        )
-        if pipeline
-        else None
-    )
+    reader = _load_easyocr_reader(use_gpu)
+    captioner = _load_florence_captioner(caption_model_id, "cuda" if use_gpu else "cpu")
     return reader, captioner
 
 
@@ -102,15 +128,61 @@ def _caption_text(image_path: Path, captioner: Any | None) -> str:
         return ""
 
     try:
-        result = captioner(str(image_path), max_new_tokens=80)
+        import torch
+        from PIL import Image
+
+        processor = captioner["processor"]
+        model = captioner["model"]
+        device = captioner["device"]
+        prompt = "<MORE_DETAILED_CAPTION>"
+
+        with Image.open(image_path) as source_image:
+            image = source_image.convert("RGB")
+            inputs = processor(text=prompt, images=image, return_tensors="pt")
+
+        if "input_ids" not in inputs or "pixel_values" not in inputs:
+            return ""
+
+        prepared_inputs: dict[str, Any] = {}
+        for key, value in inputs.items():
+            if not hasattr(value, "to"):
+                prepared_inputs[key] = value
+                continue
+            if key == "pixel_values":
+                prepared_inputs[key] = value.to(device=device, dtype=model.dtype)
+                continue
+            prepared_inputs[key] = value.to(device)
+
+        with torch.no_grad():
+            generated_ids = model.generate(
+                input_ids=prepared_inputs["input_ids"],
+                pixel_values=prepared_inputs["pixel_values"],
+                max_new_tokens=80,
+                num_beams=3,
+                do_sample=False,
+            )
+
+        generated_text = processor.batch_decode(generated_ids, skip_special_tokens=False)[0]
+        parsed = processor.post_process_generation(
+            generated_text,
+            task=prompt,
+            image_size=(image.width, image.height),
+        )
     except Exception:
         return ""
 
-    if not result:
+    if not isinstance(parsed, dict):
         return ""
 
-    value = str(result[0].get("generated_text", "") or "")
-    return " ".join(value.split())
+    candidate = parsed.get(prompt)
+    if isinstance(candidate, str) and candidate.strip():
+        return " ".join(candidate.split())
+
+    for value in parsed.values():
+        if isinstance(value, str) and value.strip():
+            return " ".join(value.split())
+
+    return ""
 
 
 def _summarize(caption: str, ocr_lines: list[str], classification: str) -> str:
@@ -119,10 +191,10 @@ def _summarize(caption: str, ocr_lines: list[str], classification: str) -> str:
     if ocr_lines:
         return f"OCR detected text. Top lines: {' / '.join(ocr_lines[:3])}"
     if classification == "same":
-        return "大きな画面変化はありません。"
+        return "No major visual change."
     if classification == "minor_change":
-        return "軽微な画面変化があります。"
-    return "大きな画面変化があります。"
+        return "Minor visual change."
+    return "Major visual change detected."
 
 
 def extract_screens(
@@ -131,6 +203,8 @@ def extract_screens(
     screen_dir: Path,
     duration_seconds: float,
     thresholds: ChangeDetectionConfig,
+    compute_mode: str | None,
+    processing_quality: str | None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     from .change_detection import compare_images
 
@@ -138,7 +212,10 @@ def extract_screens(
     timestamps = candidate_timestamps(duration_seconds)
     frame_rows: list[dict[str, Any]] = []
     diff_rows: list[dict[str, Any]] = []
-    reader, captioner = _load_ocr_components()
+    reader, captioner = _load_ocr_components(
+        compute_mode=compute_mode,
+        processing_quality=processing_quality,
+    )
 
     previous_path: Path | None = None
     previous_timestamp: float | None = None

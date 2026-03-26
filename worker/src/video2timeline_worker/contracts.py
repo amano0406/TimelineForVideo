@@ -26,6 +26,8 @@ class JobRequest:
     output_root_id: str
     output_root_path: str
     profile: str
+    compute_mode: str
+    processing_quality: str
     reprocess_duplicates: bool
     token_enabled: bool
     input_items: list[InputItem]
@@ -38,6 +40,8 @@ class JobRequest:
             "output_root_id": self.output_root_id,
             "output_root_path": self.output_root_path,
             "profile": self.profile,
+            "compute_mode": self.compute_mode,
+            "processing_quality": self.processing_quality,
             "reprocess_duplicates": self.reprocess_duplicates,
             "token_enabled": self.token_enabled,
             "input_items": [item.to_dict() for item in self.input_items],
@@ -52,6 +56,8 @@ class JobRequest:
             output_root_id=str(payload["output_root_id"]),
             output_root_path=str(payload["output_root_path"]),
             profile=str(payload["profile"]),
+            compute_mode=str(payload.get("compute_mode") or "cpu"),
+            processing_quality=str(payload.get("processing_quality") or "standard"),
             reprocess_duplicates=bool(payload["reprocess_duplicates"]),
             token_enabled=bool(payload.get("token_enabled", False)),
             input_items=[InputItem(**item) for item in payload.get("input_items", [])],

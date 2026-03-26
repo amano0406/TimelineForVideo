@@ -14,6 +14,8 @@ public sealed class SettingsModel(
     LanguageService languageService,
     JsonLocalizationService localizer) : PageModel
 {
+    private const double HighQualityMinimumGpuMemoryGiB = 10.0;
+
     public HuggingFaceAccessSnapshot Snapshot { get; private set; } = new();
 
     public SetupState SetupState { get; private set; } = new();
@@ -31,6 +33,9 @@ public sealed class SettingsModel(
     public string ComputeMode { get; set; } = "cpu";
 
     [BindProperty]
+    public string ProcessingQuality { get; set; } = "standard";
+
+    [BindProperty]
     public string UiLanguage { get; set; } = "en";
 
     public string? StatusMessage { get; private set; }
@@ -38,6 +43,10 @@ public sealed class SettingsModel(
     public string TokenSettingsUrl => "https://huggingface.co/settings/tokens";
 
     public string PyannoteModelUrl => "https://huggingface.co/pyannote/speaker-diarization-community-1";
+
+    public bool CanUseHighQuality =>
+        WorkerCapability.GpuAvailable &&
+        (WorkerCapability.MaxGpuMemoryGiB <= 0 || WorkerCapability.MaxGpuMemoryGiB >= HighQualityMinimumGpuMemoryGiB);
 
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
@@ -58,6 +67,12 @@ public sealed class SettingsModel(
             ModelState.AddModelError(nameof(ComputeMode), L("settings.compute_mode.gpu_unavailable"));
         }
 
+        if (string.Equals(ProcessingQuality, "high", StringComparison.OrdinalIgnoreCase) &&
+            (!string.Equals(ComputeMode, "gpu", StringComparison.OrdinalIgnoreCase) || !CanUseHighQuality))
+        {
+            ModelState.AddModelError(nameof(ProcessingQuality), L("settings.processing_quality.high_unavailable"));
+        }
+
         if (!ModelState.IsValid)
         {
             await LoadPageAsync(cancellationToken);
@@ -67,6 +82,7 @@ public sealed class SettingsModel(
 
         var settings = await settingsStore.LoadAsync(cancellationToken);
         settings.ComputeMode = ComputeMode;
+        settings.ProcessingQuality = ProcessingQuality;
         settings.UiLanguage = languageService.Normalize(UiLanguage) ?? "en";
         settings.HuggingfaceTermsConfirmed = false;
         await settingsStore.SaveAsync(
@@ -114,6 +130,11 @@ public sealed class SettingsModel(
         if (!WorkerCapability.GpuAvailable && string.Equals(ComputeMode, "gpu", StringComparison.OrdinalIgnoreCase))
         {
             ComputeMode = "cpu";
+        }
+        ProcessingQuality = settings.ProcessingQuality;
+        if (!CanUseHighQuality && string.Equals(ProcessingQuality, "high", StringComparison.OrdinalIgnoreCase))
+        {
+            ProcessingQuality = "standard";
         }
         UiLanguage = languageService.Normalize(settings.UiLanguage) ?? "en";
         StatusMessage ??= TempData["StatusMessage"] as string;
