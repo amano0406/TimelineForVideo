@@ -488,7 +488,9 @@ public sealed class RunSummary
     public int VideosFailed { get; set; }
     public long TotalSizeBytes { get; set; }
     public double TotalDurationSec { get; set; }
+    public double? EstimatedRemainingSec { get; set; }
     public double ProgressPercent { get; set; }
+    public bool HasDownloadableArchive { get; set; }
     public string? UpdatedAt { get; set; }
     public string? CreatedAt { get; set; }
 }

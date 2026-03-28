@@ -117,6 +117,32 @@ class JobStoreTests(unittest.TestCase):
             self.assertEqual(1, len(rows))
             self.assertEqual(job_id, rows[0]["job_id"])
 
+    def test_create_job_allows_pending_jobs_to_queue(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            runs_root = root / "runs"
+            settings = {
+                "videoExtensions": [".mp4"],
+                "inputRoots": [],
+                "outputRoots": [{"id": "runs", "path": str(runs_root), "enabled": True}],
+                "huggingfaceTermsConfirmed": False,
+            }
+
+            first_file = root / "first.mp4"
+            second_file = root / "second.mp4"
+            first_file.write_bytes(b"first")
+            second_file.write_bytes(b"second")
+
+            first_items = collect_input_items(settings=settings, files=[first_file])
+            second_items = collect_input_items(settings=settings, files=[second_file])
+
+            first_job_id, _ = create_job(settings=settings, input_items=first_items)
+            second_job_id, _ = create_job(settings=settings, input_items=second_items)
+
+            rows = list_runs(settings)
+            self.assertEqual(2, len(rows))
+            self.assertEqual({first_job_id, second_job_id}, {row["job_id"] for row in rows})
+
     def test_settings_snapshot_reports_ready_when_token_and_terms_exist(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

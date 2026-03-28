@@ -26,7 +26,7 @@
   "index.form.directory.title": "Choose A Directory",
   "index.form.directory.description": "On Edge / Chrome-based browsers you can choose a directory and send the videos under it.",
   "index.form.select_input": "Select video files or a directory.",
-  "index.form.cache_notice": "Uploaded videos are treated as temporary cache. They are deleted 10 minutes after a job completes or fails, and immediately when the run is deleted.",
+  "index.form.cache_notice": "Uploaded videos are treated as temporary cache. They are deleted 10 minutes after a job completes or fails, and immediately when the job is deleted.",
   "index.form.setup_first": "Set Up First",
   "index.form.start": "Start Job",
   "index.form.another_running": "Another Job Is Running",
@@ -34,7 +34,7 @@
   "index.history.title": "Completed Jobs",
   "index.history.description": "Completed runs can be downloaded as ZIP files. Unneeded runs can be deleted.",
   "index.history.empty": "There are no completed jobs yet.",
-  "common.run": "Run",
+  "common.run": "Job",
   "common.job": "Job",
   "common.media_id": "Media ID",
   "common.batch": "Batch",
@@ -55,6 +55,7 @@
   "common.next": "Next",
   "common.source": "Source",
   "common.status": "Status",
+  "common.remaining": "Remaining",
   "common.no_items": "No items to display.",
   "settings.page_title": "Settings",
   "settings.eyebrow": "Start Here",
@@ -241,5 +242,9 @@
   "stage.failed": "Failed",
   "units.hour": "h",
   "units.min": "m",
-  "units.sec": "s"
+  "units.sec": "s",
+  "units.byte": "B",
+  "units.kb": "KB",
+  "units.mb": "MB",
+  "units.gb": "GB"
 }

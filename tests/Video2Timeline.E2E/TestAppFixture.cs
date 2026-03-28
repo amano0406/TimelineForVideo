@@ -48,9 +48,15 @@ internal sealed class TestAppFixture : IAsyncDisposable
 
     public string BaseUrl { get; }
 
-    public string CompletedJobId => "run-e2e-completed";
+    public string CompletedJobId => "job-e2e-completed";
 
     public string CompletedMediaId => "sample-media-001";
+
+    public string PartialFailedJobId => "job-e2e-partial";
+
+    public string PartialFailedMediaId => "sample-media-002";
+
+    public string FailedNoTimelineJobId => "job-e2e-failed-no-timeline";
 
     public static async Task<TestAppFixture> StartAsync()
     {
@@ -80,6 +86,8 @@ internal sealed class TestAppFixture : IAsyncDisposable
 
         await SeedSettingsAsync(appDataRoot, outputRoot);
         await SeedCompletedRunAsync(outputRoot);
+        await SeedPartiallyFailedRunAsync(outputRoot);
+        await SeedFailedRunWithoutTimelineAsync(outputRoot);
 
         var appDllPath = Path.Combine(repoRoot, "web", "bin", "Debug", "net10.0", "Video2Timeline.Web.dll");
         var startInfo = new ProcessStartInfo("dotnet", $"\"{appDllPath}\" --urls http://127.0.0.1:{port}")
@@ -106,6 +114,24 @@ internal sealed class TestAppFixture : IAsyncDisposable
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
         return fixture;
+    }
+
+    public async Task<string> CreateRunningRunAsync()
+    {
+        var jobId = $"job-e2e-running-{Guid.NewGuid():N}"[..28];
+        await SeedRunningRunAsync(Path.Combine(TempRoot, "outputs", "runs"), jobId);
+        return jobId;
+    }
+
+    public Task DeleteRunAsync(string jobId)
+    {
+        var runRoot = Path.Combine(TempRoot, "outputs", "runs", jobId);
+        if (Directory.Exists(runRoot))
+        {
+            Directory.Delete(runRoot, recursive: true);
+        }
+
+        return Task.CompletedTask;
     }
 
     private async Task WaitUntilReadyAsync()
@@ -187,7 +213,7 @@ internal sealed class TestAppFixture : IAsyncDisposable
 
     private static async Task SeedCompletedRunAsync(string outputRoot)
     {
-        const string jobId = "run-e2e-completed";
+        const string jobId = "job-e2e-completed";
         const string mediaId = "sample-media-001";
 
         var runRoot = Path.Combine(outputRoot, jobId);
@@ -314,6 +340,409 @@ internal sealed class TestAppFixture : IAsyncDisposable
 
             Screen change:
             Initial frame.
+            """);
+    }
+
+    private static async Task SeedPartiallyFailedRunAsync(string outputRoot)
+    {
+        const string jobId = "job-e2e-partial";
+        const string mediaId = "sample-media-002";
+
+        var runRoot = Path.Combine(outputRoot, jobId);
+        Directory.CreateDirectory(runRoot);
+        Directory.CreateDirectory(Path.Combine(runRoot, "llm"));
+        Directory.CreateDirectory(Path.Combine(runRoot, "logs"));
+        Directory.CreateDirectory(Path.Combine(runRoot, "media", mediaId, "timeline"));
+
+        var request = new
+        {
+            schema_version = 1,
+            job_id = jobId,
+            created_at = "2026-03-24T10:00:00+09:00",
+            output_root_id = "runs",
+            output_root_path = outputRoot.Replace("\\", "/"),
+            profile = "quality-first",
+            reprocess_duplicates = false,
+            token_enabled = true,
+            input_items = new object[]
+            {
+                new
+                {
+                    input_id = "upload-0001",
+                    source_kind = "upload",
+                    source_id = "uploads",
+                    original_path = "good-call.mp4",
+                    display_name = "good-call.mp4",
+                    size_bytes = 2097152,
+                    uploaded_path = (string?)null,
+                },
+                new
+                {
+                    input_id = "upload-0002",
+                    source_kind = "upload",
+                    source_id = "uploads",
+                    original_path = "broken-call.mp4",
+                    display_name = "broken-call.mp4",
+                    size_bytes = 3145728,
+                    uploaded_path = (string?)null,
+                },
+            },
+        };
+
+        var warnings = new[]
+        {
+            "broken-call.mp4: CUDA failed with error unknown error",
+        };
+
+        var status = new
+        {
+            schema_version = 1,
+            job_id = jobId,
+            state = "failed",
+            current_stage = "failed",
+            message = "Job finished with errors.",
+            warnings,
+            videos_total = 2,
+            videos_done = 1,
+            videos_skipped = 0,
+            videos_failed = 1,
+            current_media = (string?)null,
+            current_media_elapsed_sec = 0.0,
+            processed_duration_sec = 120.125,
+            total_duration_sec = 180.775,
+            estimated_remaining_sec = 0.0,
+            progress_percent = 100.0,
+            started_at = "2026-03-24T10:00:03+09:00",
+            updated_at = "2026-03-24T10:05:10+09:00",
+            completed_at = "2026-03-24T10:05:10+09:00",
+        };
+
+        var result = new
+        {
+            schema_version = 1,
+            job_id = jobId,
+            state = "failed",
+            run_dir = runRoot.Replace("\\", "/"),
+            output_root_id = "runs",
+            output_root_path = outputRoot.Replace("\\", "/"),
+            processed_count = 1,
+            skipped_count = 0,
+            error_count = 1,
+            batch_count = 1,
+            timeline_index_path = Path.Combine(runRoot, "llm", "timeline_index.jsonl").Replace("\\", "/"),
+            warnings,
+        };
+
+        var manifest = new
+        {
+            schema_version = 1,
+            job_id = jobId,
+            generated_at = "2026-03-24T10:05:10+09:00",
+            items = new object[]
+            {
+                new
+                {
+                    input_id = "upload-0001",
+                    source_kind = "upload",
+                    original_path = "good-call.mp4",
+                    file_name = "good-call.mp4",
+                    size_bytes = 2097152,
+                    duration_seconds = 120.125,
+                    sha256 = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                    duplicate_status = "new",
+                    duplicate_of = (string?)null,
+                    media_id = mediaId,
+                    status = "completed",
+                },
+                new
+                {
+                    input_id = "upload-0002",
+                    source_kind = "upload",
+                    original_path = "broken-call.mp4",
+                    file_name = "broken-call.mp4",
+                    size_bytes = 3145728,
+                    duration_seconds = 60.650,
+                    sha256 = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                    duplicate_status = "new",
+                    duplicate_of = (string?)null,
+                    media_id = "broken-media-003",
+                    status = "failed",
+                },
+            },
+        };
+
+        var sourceInfo = new
+        {
+            original_path = "good-call.mp4",
+            resolved_path = "good-call.mp4",
+            display_name = "good-call.mp4",
+            captured_at = "2026-03-24 10-00-00",
+        };
+
+        var jsonOptions = new JsonSerializerOptions { WriteIndented = true };
+        await File.WriteAllTextAsync(Path.Combine(runRoot, "request.json"), JsonSerializer.Serialize(request, jsonOptions));
+        await File.WriteAllTextAsync(Path.Combine(runRoot, "status.json"), JsonSerializer.Serialize(status, jsonOptions));
+        await File.WriteAllTextAsync(Path.Combine(runRoot, "result.json"), JsonSerializer.Serialize(result, jsonOptions));
+        await File.WriteAllTextAsync(Path.Combine(runRoot, "manifest.json"), JsonSerializer.Serialize(manifest, jsonOptions));
+        await File.WriteAllTextAsync(Path.Combine(runRoot, "RUN_INFO.md"), "# Run Info\n");
+        await File.WriteAllTextAsync(Path.Combine(runRoot, "TRANSCRIPTION_INFO.md"), "# Transcription Info\n");
+        await File.WriteAllTextAsync(Path.Combine(runRoot, "NOTICE.md"), "# Notice\n");
+        await File.WriteAllTextAsync(
+            Path.Combine(runRoot, "logs", "worker.log"),
+            """
+            [info] completed good-call.mp4
+            [error] broken-call.mp4: CUDA failed with error unknown error
+            [info] job finished with errors
+            """);
+        await File.WriteAllTextAsync(Path.Combine(runRoot, "llm", "timeline_index.jsonl"), "{\"media_id\":\"sample-media-002\"}\n");
+        await File.WriteAllTextAsync(
+            Path.Combine(runRoot, "llm", "batch-001.md"),
+            "# Batch 001\n\nIncluded: sample-media-002\n");
+        await File.WriteAllTextAsync(
+            Path.Combine(runRoot, "media", mediaId, "source.json"),
+            JsonSerializer.Serialize(sourceInfo, jsonOptions));
+        await File.WriteAllTextAsync(
+            Path.Combine(runRoot, "media", mediaId, "timeline", "timeline.md"),
+            """
+            # Video Timeline
+
+            - Source: `good-call.mp4`
+            - Media ID: `sample-media-002`
+            - Duration: `120.125s`
+
+            ## 00:00:05.000 - 00:01:10.000
+            Speech:
+            SPEAKER_00: This is the successful part of a partially failed run.
+            """);
+    }
+
+    private static async Task SeedFailedRunWithoutTimelineAsync(string outputRoot)
+    {
+        const string jobId = "job-e2e-failed-no-timeline";
+
+        var runRoot = Path.Combine(outputRoot, jobId);
+        Directory.CreateDirectory(runRoot);
+        Directory.CreateDirectory(Path.Combine(runRoot, "llm"));
+        Directory.CreateDirectory(Path.Combine(runRoot, "logs"));
+
+        var warnings = new[]
+        {
+            "orphaned-success.mp4: timeline output was not written",
+        };
+
+        var request = new
+        {
+            schema_version = 1,
+            job_id = jobId,
+            created_at = "2026-03-24T11:00:00+09:00",
+            output_root_id = "runs",
+            output_root_path = outputRoot.Replace("\\", "/"),
+            profile = "quality-first",
+            reprocess_duplicates = false,
+            token_enabled = false,
+            input_items = new object[]
+            {
+                new
+                {
+                    input_id = "upload-0001",
+                    source_kind = "upload",
+                    source_id = "uploads",
+                    original_path = "orphaned-success.mp4",
+                    display_name = "orphaned-success.mp4",
+                    size_bytes = 1024,
+                    uploaded_path = (string?)null,
+                },
+            },
+        };
+
+        var status = new
+        {
+            schema_version = 1,
+            job_id = jobId,
+            state = "failed",
+            current_stage = "failed",
+            message = "Job finished with errors.",
+            warnings,
+            videos_total = 1,
+            videos_done = 1,
+            videos_skipped = 0,
+            videos_failed = 0,
+            current_media = (string?)null,
+            current_media_elapsed_sec = 0.0,
+            processed_duration_sec = 10.0,
+            total_duration_sec = 10.0,
+            estimated_remaining_sec = 0.0,
+            progress_percent = 100.0,
+            started_at = "2026-03-24T11:00:03+09:00",
+            updated_at = "2026-03-24T11:00:15+09:00",
+            completed_at = "2026-03-24T11:00:15+09:00",
+        };
+
+        var result = new
+        {
+            schema_version = 1,
+            job_id = jobId,
+            state = "failed",
+            run_dir = runRoot.Replace("\\", "/"),
+            output_root_id = "runs",
+            output_root_path = outputRoot.Replace("\\", "/"),
+            processed_count = 1,
+            skipped_count = 0,
+            error_count = 0,
+            batch_count = 0,
+            timeline_index_path = (string?)null,
+            warnings,
+        };
+
+        var manifest = new
+        {
+            schema_version = 1,
+            job_id = jobId,
+            generated_at = "2026-03-24T11:00:15+09:00",
+            items = new object[]
+            {
+                new
+                {
+                    input_id = "upload-0001",
+                    source_kind = "upload",
+                    original_path = "orphaned-success.mp4",
+                    file_name = "orphaned-success.mp4",
+                    size_bytes = 1024,
+                    duration_seconds = 10.0,
+                    sha256 = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                    duplicate_status = "new",
+                    duplicate_of = (string?)null,
+                    media_id = "orphaned-media-001",
+                    status = "completed",
+                },
+            },
+        };
+
+        var jsonOptions = new JsonSerializerOptions { WriteIndented = true };
+        await File.WriteAllTextAsync(Path.Combine(runRoot, "request.json"), JsonSerializer.Serialize(request, jsonOptions));
+        await File.WriteAllTextAsync(Path.Combine(runRoot, "status.json"), JsonSerializer.Serialize(status, jsonOptions));
+        await File.WriteAllTextAsync(Path.Combine(runRoot, "result.json"), JsonSerializer.Serialize(result, jsonOptions));
+        await File.WriteAllTextAsync(Path.Combine(runRoot, "manifest.json"), JsonSerializer.Serialize(manifest, jsonOptions));
+        await File.WriteAllTextAsync(Path.Combine(runRoot, "RUN_INFO.md"), "# Run Info\n");
+        await File.WriteAllTextAsync(Path.Combine(runRoot, "TRANSCRIPTION_INFO.md"), "# Transcription Info\n");
+        await File.WriteAllTextAsync(Path.Combine(runRoot, "NOTICE.md"), "# Notice\n");
+        await File.WriteAllTextAsync(Path.Combine(runRoot, "logs", "worker.log"), "[error] timeline output missing\n");
+    }
+
+    private static async Task SeedRunningRunAsync(string outputRoot, string jobId)
+    {
+        const string mediaId = "sample-media-running";
+
+        var runRoot = Path.Combine(outputRoot, jobId);
+        Directory.CreateDirectory(runRoot);
+        Directory.CreateDirectory(Path.Combine(runRoot, "llm"));
+        Directory.CreateDirectory(Path.Combine(runRoot, "logs"));
+        Directory.CreateDirectory(Path.Combine(runRoot, "media", mediaId, "timeline"));
+
+        var request = new
+        {
+            schema_version = 1,
+            job_id = jobId,
+            created_at = "2026-03-24T12:00:00+09:00",
+            output_root_id = "runs",
+            output_root_path = outputRoot.Replace("\\", "/"),
+            profile = "quality-first",
+            reprocess_duplicates = false,
+            token_enabled = false,
+            input_items = new object[]
+            {
+                new
+                {
+                    input_id = "upload-0001",
+                    source_kind = "upload",
+                    source_id = "uploads",
+                    original_path = "running-call.mp4",
+                    display_name = "running-call.mp4",
+                    size_bytes = 2048,
+                    uploaded_path = (string?)null,
+                },
+            },
+        };
+
+        var status = new
+        {
+            schema_version = 1,
+            job_id = jobId,
+            state = "running",
+            current_stage = "transcribe",
+            message = "Running WhisperX transcription.",
+            warnings = Array.Empty<string>(),
+            videos_total = 1,
+            videos_done = 1,
+            videos_skipped = 0,
+            videos_failed = 0,
+            current_media = "running-call.mp4",
+            current_media_elapsed_sec = 30.0,
+            processed_duration_sec = 30.0,
+            total_duration_sec = 60.0,
+            estimated_remaining_sec = 30.0,
+            progress_percent = 50.0,
+            started_at = "2026-03-24T12:00:03+09:00",
+            updated_at = "2026-03-24T12:00:33+09:00",
+            completed_at = (string?)null,
+        };
+
+        var result = new
+        {
+            schema_version = 1,
+            job_id = jobId,
+            state = "running",
+            run_dir = runRoot.Replace("\\", "/"),
+            output_root_id = "runs",
+            output_root_path = outputRoot.Replace("\\", "/"),
+            processed_count = 1,
+            skipped_count = 0,
+            error_count = 0,
+            batch_count = 0,
+            timeline_index_path = (string?)null,
+            warnings = Array.Empty<string>(),
+        };
+
+        var manifest = new
+        {
+            schema_version = 1,
+            job_id = jobId,
+            generated_at = "2026-03-24T12:00:33+09:00",
+            items = new object[]
+            {
+                new
+                {
+                    input_id = "upload-0001",
+                    source_kind = "upload",
+                    original_path = "running-call.mp4",
+                    file_name = "running-call.mp4",
+                    size_bytes = 2048,
+                    duration_seconds = 60.0,
+                    sha256 = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                    duplicate_status = "new",
+                    duplicate_of = (string?)null,
+                    media_id = mediaId,
+                    status = "completed",
+                },
+            },
+        };
+
+        var jsonOptions = new JsonSerializerOptions { WriteIndented = true };
+        await File.WriteAllTextAsync(Path.Combine(runRoot, "request.json"), JsonSerializer.Serialize(request, jsonOptions));
+        await File.WriteAllTextAsync(Path.Combine(runRoot, "status.json"), JsonSerializer.Serialize(status, jsonOptions));
+        await File.WriteAllTextAsync(Path.Combine(runRoot, "result.json"), JsonSerializer.Serialize(result, jsonOptions));
+        await File.WriteAllTextAsync(Path.Combine(runRoot, "manifest.json"), JsonSerializer.Serialize(manifest, jsonOptions));
+        await File.WriteAllTextAsync(Path.Combine(runRoot, "RUN_INFO.md"), "# Run Info\n");
+        await File.WriteAllTextAsync(Path.Combine(runRoot, "TRANSCRIPTION_INFO.md"), "# Transcription Info\n");
+        await File.WriteAllTextAsync(Path.Combine(runRoot, "NOTICE.md"), "# Notice\n");
+        await File.WriteAllTextAsync(Path.Combine(runRoot, "logs", "worker.log"), "[info] still processing\n");
+        await File.WriteAllTextAsync(
+            Path.Combine(runRoot, "media", mediaId, "timeline", "timeline.md"),
+            """
+            # Video Timeline
+
+            - Source: `running-call.mp4`
+            - Media ID: `sample-media-running`
             """);
     }
 

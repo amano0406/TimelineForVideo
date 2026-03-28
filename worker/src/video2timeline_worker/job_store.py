@@ -148,7 +148,7 @@ def list_runs(settings: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         output_path = Path(str(root["path"]))
         if not output_path.exists():
             continue
-        for run_dir in sorted(output_path.glob("run-*"), key=lambda item: item.name, reverse=True):
+        for run_dir in _iter_job_dirs(output_path):
             request_path = run_dir / "request.json"
             status_path = run_dir / "status.json"
             manifest_path = run_dir / "manifest.json"
@@ -204,7 +204,7 @@ def find_run_dir(job_id: str, settings: dict[str, Any] | None = None) -> Path:
         candidate = Path(str(root["path"])) / job_id
         if candidate.exists():
             return candidate
-    raise ValueError(f"Run not found: {job_id}")
+    raise ValueError(f"Job not found: {job_id}")
 
 
 def build_run_archive(
@@ -355,9 +355,6 @@ def create_job(
     reprocess_duplicates: bool = False,
 ) -> tuple[str, Path]:
     settings = settings or load_settings()
-    active = get_active_run(settings)
-    if active is not None:
-        raise ValueError(f"Another job is already active: {active['job_id']}")
     if not input_items:
         raise ValueError("No input videos were selected.")
 
@@ -365,7 +362,7 @@ def create_job(
     output_root_path = Path(str(output_root["path"]))
     ensure_dir(output_root_path)
 
-    job_id = f"run-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid4().hex[:8]}"
+    job_id = f"job-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid4().hex[:8]}"
     run_dir = output_root_path / job_id
     ensure_dir(run_dir / "media")
     ensure_dir(run_dir / "llm")
@@ -425,6 +422,12 @@ def create_job(
     write_text(run_dir / "NOTICE.md", "# Notice\n\nPending worker pickup.\n")
 
     return job_id, run_dir
+
+
+def _iter_job_dirs(output_path: Path) -> list[Path]:
+    rows = list(output_path.glob("job-*"))
+    rows.extend(output_path.glob("run-*"))
+    return sorted({item.resolve(): item for item in rows}.values(), key=lambda item: item.name, reverse=True)
 
 
 def settings_snapshot(settings: dict[str, Any] | None = None) -> dict[str, Any]:

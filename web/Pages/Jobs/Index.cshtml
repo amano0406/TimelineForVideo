@@ -1,5 +1,6 @@
 @page "/jobs"
 @model Video2Timeline.Web.Pages.Jobs.IndexModel
+@using Video2Timeline.Web.Infrastructure
 @inject Video2Timeline.Web.Services.LanguageService LanguageService
 @inject Video2Timeline.Web.Services.JsonLocalizationService Localizer
 @{
@@ -19,17 +20,9 @@
         return label == key ? value ?? "-" : label;
     }
 
-    string FormatSize(long valueBytes) => $"{valueBytes / 1024.0 / 1024.0:F1} MB";
-    string FormatDuration(double valueSeconds) => $"{valueSeconds / 60.0:F1} {L("units.min")}";
-    string FormatCreatedAt(string? value)
-    {
-        if (!DateTimeOffset.TryParse(value, out var parsed))
-        {
-            return "-";
-        }
-
-        return parsed.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.CurrentCulture);
-    }
+    string FormatSize(long valueBytes) => DisplayFormatters.FormatFileSize(valueBytes, L);
+    string FormatDuration(double? valueSeconds) => DisplayFormatters.FormatDurationFriendly(valueSeconds, L);
+    string FormatCreatedAt(string? value) => DisplayFormatters.FormatCreatedAt(value);
     double Percent(double raw, int done, int total)
     {
         if (raw > 0)
@@ -80,7 +73,7 @@
                 </div>
             </div>
 
-            <div class="grid gap-4 xl:grid-cols-5">
+            <div class="grid gap-4 xl:grid-cols-6">
                 <div class="metric-card xl:col-span-2">
                     <div class="metric-label">@L("common.job")</div>
                     <div class="metric-value">@Model.ActiveRun.JobId</div>
@@ -105,9 +98,13 @@
                     <div class="metric-label">@L("common.total_duration")</div>
                     <div class="metric-value">@FormatDuration(Model.ActiveRun.TotalDurationSec)</div>
                 </div>
+                <div class="metric-card">
+                    <div class="metric-label">@L("details.remaining_time")</div>
+                    <div class="metric-value">@FormatDuration(Model.ActiveRun.EstimatedRemainingSec)</div>
+                </div>
             </div>
             <div class="mt-4">
-                <a class="btn-secondary" href="/runs/@Model.ActiveRun.JobId">@L("jobs.active.open_details")</a>
+                <a class="btn-secondary" href="@JobUrls.Details(Model.ActiveRun.JobId)">@L("jobs.active.open_details")</a>
             </div>
         </section>
     }
@@ -160,11 +157,17 @@
                             var percent = Percent(run.ProgressPercent, run.VideosDone, run.VideosTotal);
                             <tr>
                                 <td>
-                                    <a class="table-link" href="/runs/@run.JobId">@run.JobId</a>
+                                    <a class="table-link" href="@JobUrls.Details(run.JobId)">@run.JobId</a>
                                 </td>
                                 <td>
                                     <span class="@StateBadgeClass(run.State)">@StateLabel(run.State)</span>
                                     <div class="mt-2 text-xs text-slate-500">@StageLabel(run.CurrentStage)</div>
+                                    @if ((string.Equals(run.State, "pending", StringComparison.OrdinalIgnoreCase) ||
+                                          string.Equals(run.State, "running", StringComparison.OrdinalIgnoreCase)) &&
+                                         run.EstimatedRemainingSec.HasValue)
+                                    {
+                                        <div class="mt-1 text-xs text-slate-500">@L("common.remaining"): @FormatDuration(run.EstimatedRemainingSec)</div>
+                                    }
                                 </td>
                                 <td>
                                     <div class="font-medium text-slate-900">@PercentLabel(percent)</div>
@@ -178,10 +181,10 @@
                                 <td>@FormatCreatedAt(run.CreatedAt)</td>
                                 <td>
                                     <div class="flex flex-wrap gap-2">
-                                        <a class="btn-table" href="/runs/@run.JobId">@L("common.details")</a>
-                                        @if (string.Equals(run.State, "completed", StringComparison.OrdinalIgnoreCase))
+                                        <a class="btn-table" href="@JobUrls.Details(run.JobId)">@L("common.details")</a>
+                                        @if (run.HasDownloadableArchive && !string.Equals(run.State, "pending", StringComparison.OrdinalIgnoreCase) && !string.Equals(run.State, "running", StringComparison.OrdinalIgnoreCase))
                                         {
-                                            <a class="btn-table-success" href="/runs/@run.JobId/download">@L("common.zip")</a>
+                                            <a class="btn-table-success" href="@JobUrls.Download(run.JobId)">@L("common.zip")</a>
                                         }
                                         <form method="post" asp-page-handler="Delete" class="inline">
                                             <input type="hidden" name="jobId" value="@run.JobId" />

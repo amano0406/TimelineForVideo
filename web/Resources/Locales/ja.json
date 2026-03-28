@@ -6,7 +6,8 @@
   "layout.ready": "準備完了",
   "layout.setup_required": "設定が必要",
   "layout.update_detected": "新しいアプリの版を検知しました。再読み込みします。",
-  "common.run": "Run",
+  "common.run": "ジョブ",
+  "common.job": "ジョブ",
   "common.media_id": "Media ID",
   "common.batch": "バッチ",
   "common.state": "状態",
@@ -26,6 +27,7 @@
   "common.next": "次へ",
   "common.source": "元ファイル",
   "common.status": "ステータス",
+  "common.remaining": "残り",
   "common.no_items": "表示するアイテムはありません。",
   "settings.page_title": "設定",
   "settings.eyebrow": "最初に設定",
@@ -203,5 +205,9 @@
   "stage.failed": "失敗",
   "units.hour": "時間",
   "units.min": "分",
-  "units.sec": "秒"
+  "units.sec": "秒",
+  "units.byte": "B",
+  "units.kb": "KB",
+  "units.mb": "MB",
+  "units.gb": "GB"
 }

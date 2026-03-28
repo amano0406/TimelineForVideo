@@ -1,4 +1,6 @@
+using System.Net;
 using System.Text.RegularExpressions;
+using System.IO.Compression;
 using Microsoft.Playwright;
 
 namespace Video2Timeline.E2E;
@@ -61,23 +63,26 @@ public sealed class DashboardSmokeTests : PageTest
     {
         await Page.GotoAsync($"{_fixture.BaseUrl}/jobs");
 
+        var row = Page.Locator("tr").Filter(new() { HasText = _fixture.CompletedJobId });
         await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Jobs", Exact = true })).ToBeVisibleAsync();
         await Expect(Page.GetByText("Now Processing")).ToHaveCountAsync(0);
         await Expect(Page.GetByText(_fixture.CompletedJobId)).ToBeVisibleAsync();
-        await Expect(Page.GetByRole(AriaRole.Link, new() { Name = "ZIP" })).ToBeVisibleAsync();
+        await Expect(row).ToContainTextAsync("1 MB");
+        await Expect(row).ToContainTextAsync("1m 10s");
+        await Expect(row.GetByRole(AriaRole.Link, new() { Name = "ZIP" })).ToBeVisibleAsync();
     }
 
     [TestMethod]
     public async Task CompletedRunDetails_ExposeZip_AndTimeline()
     {
-        await Page.GotoAsync($"{_fixture.BaseUrl}/runs/{_fixture.CompletedJobId}");
+        await Page.GotoAsync($"{_fixture.BaseUrl}/jobs/{_fixture.CompletedJobId}");
 
         await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = _fixture.CompletedJobId })).ToBeVisibleAsync();
         await Expect(Page.GetByRole(AriaRole.Link, new() { Name = "Download ZIP" })).ToBeVisibleAsync();
         await Expect(Page.GetByRole(AriaRole.Link, new() { Name = _fixture.CompletedMediaId })).ToBeVisibleAsync();
 
         await Page.GetByRole(AriaRole.Link, new() { Name = _fixture.CompletedMediaId }).ClickAsync();
-        await Expect(Page).ToHaveURLAsync(new Regex($".*/runs/{_fixture.CompletedJobId}/{_fixture.CompletedMediaId}$"));
+        await Expect(Page).ToHaveURLAsync(new Regex($".*/jobs/{_fixture.CompletedJobId}/{_fixture.CompletedMediaId}$"));
         await Expect(Page.Locator("pre")).ToContainTextAsync("Video Timeline");
         await Expect(Page.Locator("pre")).ToContainTextAsync("public test sample");
     }
@@ -85,7 +90,7 @@ public sealed class DashboardSmokeTests : PageTest
     [TestMethod]
     public async Task CompletedRunDetails_CanDownloadZip()
     {
-        await Page.GotoAsync($"{_fixture.BaseUrl}/runs/{_fixture.CompletedJobId}");
+        await Page.GotoAsync($"{_fixture.BaseUrl}/jobs/{_fixture.CompletedJobId}");
 
         var download = await Page.RunAndWaitForDownloadAsync(async () =>
         {
@@ -93,5 +98,99 @@ public sealed class DashboardSmokeTests : PageTest
         });
 
         Assert.AreEqual($"{_fixture.CompletedJobId}.zip", download.SuggestedFilename);
+    }
+
+    [TestMethod]
+    public async Task Jobs_Page_Shows_Zip_For_PartiallyFailed_Run()
+    {
+        await Page.GotoAsync($"{_fixture.BaseUrl}/jobs");
+
+        var row = Page.Locator("tr").Filter(new() { HasText = _fixture.PartialFailedJobId });
+        await Expect(row).ToContainTextAsync(_fixture.PartialFailedJobId);
+        await Expect(row.GetByRole(AriaRole.Link, new() { Name = "ZIP" })).ToBeVisibleAsync();
+    }
+
+    [TestMethod]
+    public async Task PartiallyFailedRunDetails_CanDownloadZip_WithFailureReport()
+    {
+        await Page.GotoAsync($"{_fixture.BaseUrl}/jobs/{_fixture.PartialFailedJobId}");
+
+        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = _fixture.PartialFailedJobId })).ToBeVisibleAsync();
+        await Expect(Page.GetByRole(AriaRole.Link, new() { Name = "Download ZIP" })).ToBeVisibleAsync();
+        await Expect(Page.GetByRole(AriaRole.Link, new() { Name = _fixture.PartialFailedMediaId })).ToBeVisibleAsync();
+
+        var download = await Page.RunAndWaitForDownloadAsync(async () =>
+        {
+            await Page.GetByRole(AriaRole.Link, new() { Name = "Download ZIP" }).ClickAsync();
+        });
+
+        var zipPath = Path.Combine(_fixture.TempRoot, $"{_fixture.PartialFailedJobId}.zip");
+        await download.SaveAsAsync(zipPath);
+
+        using var archive = ZipFile.OpenRead(zipPath);
+        Assert.IsTrue(archive.Entries.Any(entry => entry.FullName.StartsWith("timelines/", StringComparison.Ordinal)));
+        Assert.IsNotNull(archive.GetEntry("FAILURE_REPORT.md"));
+        Assert.IsNotNull(archive.GetEntry("logs/worker.log"));
+
+        using var reportReader = new StreamReader(archive.GetEntry("FAILURE_REPORT.md")!.Open());
+        var reportText = await reportReader.ReadToEndAsync();
+        StringAssert.Contains(reportText, "broken-call.mp4");
+        StringAssert.Contains(reportText, "CUDA failed with error unknown error");
+    }
+
+    [TestMethod]
+    public async Task FailedRunWithoutTimelines_HidesZip_AndDownloadReturnsBadRequest()
+    {
+        await Page.GotoAsync($"{_fixture.BaseUrl}/jobs");
+
+        var row = Page.Locator("tr").Filter(new() { HasText = _fixture.FailedNoTimelineJobId });
+        await Expect(row).ToContainTextAsync(_fixture.FailedNoTimelineJobId);
+        await Expect(row.GetByRole(AriaRole.Link, new() { Name = "ZIP" })).ToHaveCountAsync(0);
+
+        await Page.GotoAsync($"{_fixture.BaseUrl}/jobs/{_fixture.FailedNoTimelineJobId}");
+        await Expect(Page.GetByRole(AriaRole.Link, new() { Name = "Download ZIP" })).ToHaveCountAsync(0);
+
+        using var client = new HttpClient();
+        using var response = await client.GetAsync($"{_fixture.BaseUrl}/jobs/{_fixture.FailedNoTimelineJobId}/download");
+        Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        StringAssert.Contains(body, "No completed timelines are available to download for this job.");
+    }
+
+    [TestMethod]
+    public async Task RunningRun_HidesZip_AndDownloadReturnsBadRequest()
+    {
+        var jobId = await _fixture.CreateRunningRunAsync();
+        try
+        {
+            await Page.GotoAsync($"{_fixture.BaseUrl}/jobs");
+
+            var row = Page.Locator("tr").Filter(new() { HasText = jobId });
+            await Expect(row).ToContainTextAsync(jobId);
+            await Expect(row.GetByRole(AriaRole.Link, new() { Name = "ZIP" })).ToHaveCountAsync(0);
+
+            await Page.GotoAsync($"{_fixture.BaseUrl}/jobs/{jobId}");
+            await Expect(Page.GetByRole(AriaRole.Link, new() { Name = "Download ZIP" })).ToHaveCountAsync(0);
+
+            using var client = new HttpClient();
+            using var response = await client.GetAsync($"{_fixture.BaseUrl}/jobs/{jobId}/download");
+            Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
+            var body = await response.Content.ReadAsStringAsync();
+            StringAssert.Contains(body, "The job is still in progress.");
+        }
+        finally
+        {
+            await _fixture.DeleteRunAsync(jobId);
+        }
+    }
+
+    [TestMethod]
+    public async Task LegacyRunUrls_Redirect_To_JobUrls()
+    {
+        await Page.GotoAsync($"{_fixture.BaseUrl}/runs/{_fixture.CompletedJobId}");
+        await Expect(Page).ToHaveURLAsync(new Regex($".*/jobs/{_fixture.CompletedJobId}$"));
+
+        await Page.GotoAsync($"{_fixture.BaseUrl}/runs/{_fixture.CompletedJobId}/{_fixture.CompletedMediaId}");
+        await Expect(Page).ToHaveURLAsync(new Regex($".*/jobs/{_fixture.CompletedJobId}/{_fixture.CompletedMediaId}$"));
     }
 }

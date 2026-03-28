@@ -260,6 +260,15 @@ def _make_media_id(item: Any, file_hash: str) -> str:
 
 
 def _collect_pending_jobs() -> list[Path]:
+    return _collect_jobs_by_state("pending")
+
+
+def _collect_running_jobs() -> list[Path]:
+    return _collect_jobs_by_state("running")
+
+
+def _collect_jobs_by_state(*states: str) -> list[Path]:
+    target_states = {state.lower() for state in states}
     settings = load_settings()
     rows: list[Path] = []
     for root in settings.get("outputRoots", []):
@@ -268,13 +277,15 @@ def _collect_pending_jobs() -> list[Path]:
         root_path = Path(str(root.get("path") or ""))
         if not root_path.exists():
             continue
-        for candidate in sorted(root_path.glob("run-*")):
+        job_dirs = list(root_path.glob("job-*"))
+        job_dirs.extend(root_path.glob("run-*"))
+        for candidate in sorted({item.resolve(): item for item in job_dirs}.values()):
             if not candidate.is_dir():
                 continue
             if not _request_path(candidate).exists():
                 continue
             status = _load_status(candidate)
-            if status.state == "pending":
+            if status.state.lower() in target_states:
                 rows.append(candidate)
     return rows
 
@@ -411,6 +422,8 @@ def _process_one_item(
 
 def process_job(job_dir: Path | None = None) -> bool:
     if job_dir is None:
+        if _collect_running_jobs():
+            return False
         pending = _collect_pending_jobs()
         if not pending:
             return False

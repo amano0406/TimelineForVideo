@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http.Features;
+using Video2Timeline.Web.Infrastructure;
 using Video2Timeline.Web.Models;
 using Video2Timeline.Web.Services;
 
@@ -226,7 +227,7 @@ app.MapGet("/api/jobs/{id}", async (string id, RunStore runStore, CancellationTo
     return status is null ? Results.NotFound() : Results.Ok(status);
 });
 
-app.MapGet("/runs/{id}/download", async (string id, RunStore runStore, CancellationToken cancellationToken) =>
+app.MapGet("/jobs/{id}/download", async (string id, RunStore runStore, CancellationToken cancellationToken) =>
 {
     try
     {
@@ -240,6 +241,10 @@ app.MapGet("/runs/{id}/download", async (string id, RunStore runStore, Cancellat
         return Results.BadRequest(new { error = ex.Message });
     }
 });
+
+app.MapGet("/runs/{id}/download", (string id) => Results.Redirect(JobUrls.Download(id)));
+app.MapGet("/runs/{jobId}/{mediaId}", (string jobId, string mediaId) => Results.Redirect(JobUrls.Media(jobId, mediaId)));
+app.MapGet("/runs/{id}", (string id) => Results.Redirect(JobUrls.Details(id)));
 
 app.MapPost("/api/settings/huggingface", async (HuggingFaceSaveRequest request, SettingsStore settingsStore, HuggingFaceAccessService accessService, CancellationToken cancellationToken) =>
 {

@@ -1,5 +1,6 @@
-@page "/runs/{id}"
+@page "/jobs/{id}"
 @model Video2Timeline.Web.Pages.Runs.DetailsModel
+@using Video2Timeline.Web.Infrastructure
 @inject Video2Timeline.Web.Services.LanguageService LanguageService
 @inject Video2Timeline.Web.Services.JsonLocalizationService Localizer
 @{
@@ -44,32 +45,13 @@
 
     string PercentLabel(double value) => $"{Math.Round(value, 1):0.0}%";
 
-    string FormatDurationFriendly(double? seconds)
-    {
-        var totalSeconds = Math.Max(0, (int)Math.Round(seconds ?? 0));
-        var hours = totalSeconds / 3600;
-        var minutes = (totalSeconds % 3600) / 60;
-        var remainSeconds = totalSeconds % 60;
-        var parts = new List<string>();
-
-        if (hours > 0)
-        {
-            parts.Add($"{hours}{L("units.hour")}");
-        }
-
-        if (minutes > 0 || hours > 0)
-        {
-            parts.Add($"{minutes}{L("units.min")}");
-        }
-
-        parts.Add($"{remainSeconds}{L("units.sec")}");
-        return string.Join(" ", parts);
-    }
+    string FormatDurationFriendly(double? seconds) => DisplayFormatters.FormatDurationFriendly(seconds, L);
 
     ViewData["Title"] = L("details.page_title");
     var progressPercent = Percent(status?.ProgressPercent, status?.VideosDone ?? 0, status?.VideosTotal ?? 0);
     var isActive = string.Equals(status?.State, "pending", StringComparison.OrdinalIgnoreCase) ||
                    string.Equals(status?.State, "running", StringComparison.OrdinalIgnoreCase);
+    var canDownloadArchive = !isActive && run.TimelineItems.Count > 0;
 }
 
 <section class="app-page space-y-6" data-active="@(isActive ? "true" : "false")" id="job-details">
@@ -81,9 +63,9 @@
                 <p class="page-description">@run.RunDirectory</p>
             </div>
             <div class="flex flex-wrap gap-2">
-                @if (string.Equals(status?.State, "completed", StringComparison.OrdinalIgnoreCase))
+                @if (canDownloadArchive)
                 {
-                    <a class="btn-secondary" href="/runs/@run.JobId/download">@L("details.download_zip")</a>
+                    <a class="btn-secondary" href="@JobUrls.Download(run.JobId)">@L("details.download_zip")</a>
                 }
             </div>
         </div>
@@ -192,7 +174,7 @@
                             {
                                 <tr>
                                     <td class="font-medium text-slate-900">
-                                        <a class="text-sky-700 hover:text-sky-500" href="/runs/@run.JobId/@item.MediaId">@item.MediaId</a>
+                                        <a class="text-sky-700 hover:text-sky-500" href="@JobUrls.Media(run.JobId, item.MediaId)">@item.MediaId</a>
                                     </td>
                                     <td>@StageLabel(item.Status)</td>
                                     <td class="text-slate-600">@item.SourcePath</td>

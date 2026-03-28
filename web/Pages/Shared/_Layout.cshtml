@@ -12,7 +12,13 @@
 
     string NavClass(string href, bool includeRuns = false)
     {
+        var isJobsSection = string.Equals(href, "/jobs", StringComparison.OrdinalIgnoreCase) &&
+            (string.Equals(currentPath, "/jobs", StringComparison.OrdinalIgnoreCase) ||
+             (currentPath.StartsWith("/jobs/", StringComparison.OrdinalIgnoreCase) &&
+              !currentPath.StartsWith("/jobs/new", StringComparison.OrdinalIgnoreCase)));
+
         var isActive =
+            isJobsSection ||
             string.Equals(currentPath, href, StringComparison.OrdinalIgnoreCase) ||
             (!string.Equals(href, "/jobs", StringComparison.OrdinalIgnoreCase) &&
              currentPath.StartsWith($"{href}/", StringComparison.OrdinalIgnoreCase)) ||

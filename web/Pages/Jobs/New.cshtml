@@ -166,7 +166,11 @@
                 uploadCanceling: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.upload_canceling"))),
                 execute: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.execute"))),
                 currentFile: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.upload_current_file"))),
-                leaveWarning: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.upload_leave_warning")))
+                leaveWarning: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.upload_leave_warning"))),
+                unitByte: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("units.byte"))),
+                unitKb: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("units.kb"))),
+                unitMb: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("units.mb"))),
+                unitGb: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("units.gb")))
             };
 
             const chunkUploadEnabled = window.fetch && window.FormData && window.Blob;
@@ -191,17 +195,24 @@
                 (current, value, index) => current.replace(`{${index}}`, String(value)),
                 template);
 
+            const formatCompactNumber = (value) => {
+                if (Math.abs(value) >= 100) {
+                    return Math.round(value).toString();
+                }
+                return value.toFixed(1).replace(/\.0$/, "");
+            };
+
             const formatBytes = (value) => {
                 if (value >= 1024 * 1024 * 1024) {
-                    return `${(value / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+                    return `${formatCompactNumber(value / (1024 * 1024 * 1024))} ${messages.unitGb}`;
                 }
                 if (value >= 1024 * 1024) {
-                    return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+                    return `${formatCompactNumber(value / (1024 * 1024))} ${messages.unitMb}`;
                 }
                 if (value >= 1024) {
-                    return `${Math.round(value / 1024)} KB`;
+                    return `${formatCompactNumber(value / 1024)} ${messages.unitKb}`;
                 }
-                return `${value} B`;
+                return `${value} ${messages.unitByte}`;
             };
 
             const getDisplayName = (file, sourceKind) => {
@@ -562,7 +573,7 @@
                     uploadInProgress = false;
                     window.removeEventListener("beforeunload", handleBeforeUnload);
                     activeSessionId = null;
-                    window.location.assign(`/runs/${created.jobId}`);
+                    window.location.assign(`/jobs/${created.jobId}`);
                 } catch (error) {
                     if (!cancelRequested) {
                         await cleanupSession();

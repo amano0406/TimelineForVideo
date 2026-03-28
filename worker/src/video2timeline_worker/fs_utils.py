@@ -2,10 +2,15 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+
+_PATH_LOCKS: dict[str, threading.Lock] = {}
+_PATH_LOCKS_GUARD = threading.Lock()
 
 
 def now_iso() -> str:
@@ -27,11 +32,28 @@ def ensure_dir(path: Path) -> Path:
     return path
 
 
+def _lock_for_path(path: Path) -> threading.Lock:
+    key = str(path)
+    with _PATH_LOCKS_GUARD:
+        lock = _PATH_LOCKS.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _PATH_LOCKS[key] = lock
+        return lock
+
+
 def write_json_atomic(path: Path, payload: Any) -> None:
     ensure_dir(path.parent)
-    temp = path.with_suffix(path.suffix + ".tmp")
-    temp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    temp.replace(path)
+    with _lock_for_path(path):
+        temp = path.parent / f".{path.name}.{uuid.uuid4().hex}.tmp"
+        try:
+            temp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+            temp.replace(path)
+        finally:
+            try:
+                temp.unlink()
+            except FileNotFoundError:
+                pass
 
 
 def read_json(path: Path) -> dict[str, Any]:

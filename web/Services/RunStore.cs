@@ -138,7 +138,7 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
         var existingRunDirectory = await FindRunDirectoryAsync(jobId, cancellationToken);
         if (existingRunDirectory is null)
         {
-            throw new InvalidOperationException("The selected run could not be found.");
+            throw new InvalidOperationException("The selected job could not be found.");
         }
 
         var existingRequest = await ReadJsonAsync<JobRequestDocument>(
@@ -146,7 +146,7 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
             cancellationToken);
         if (existingRequest is null || existingRequest.InputItems.Count == 0)
         {
-            throw new InvalidOperationException("The selected run does not have a reusable request.");
+            throw new InvalidOperationException("The selected job does not have a reusable request.");
         }
 
         var outputRoot = settings.OutputRoots
@@ -184,7 +184,7 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
         var runDirectory = await FindRunDirectoryAsync(jobId, cancellationToken);
         if (runDirectory is null)
         {
-            throw new InvalidOperationException("The selected run could not be found.");
+            throw new InvalidOperationException("The selected job could not be found.");
         }
 
         var status = await ReadJsonAsync<JobStatusDocument>(Path.Combine(runDirectory, "status.json"), cancellationToken);
@@ -192,7 +192,7 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
             (string.Equals(status.State, "pending", StringComparison.OrdinalIgnoreCase) ||
              string.Equals(status.State, "running", StringComparison.OrdinalIgnoreCase)))
         {
-            throw new InvalidOperationException("Active runs cannot be deleted.");
+            throw new InvalidOperationException("Active jobs cannot be deleted.");
         }
 
         var request = await ReadJsonAsync<JobRequestDocument>(Path.Combine(runDirectory, "request.json"), cancellationToken);
@@ -211,7 +211,7 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
                 continue;
             }
 
-            foreach (var runDirectory in Directory.EnumerateDirectories(root.Path, "run-*", SearchOption.TopDirectoryOnly))
+            foreach (var runDirectory in EnumerateJobDirectories(root.Path))
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var status = await ReadJsonAsync<JobStatusDocument>(Path.Combine(runDirectory, "status.json"), cancellationToken);
@@ -253,7 +253,7 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
                 continue;
             }
 
-            foreach (var runDirectory in Directory.EnumerateDirectories(root.Path, "run-*", SearchOption.TopDirectoryOnly))
+            foreach (var runDirectory in EnumerateJobDirectories(root.Path))
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var status = await ReadJsonAsync<JobStatusDocument>(Path.Combine(runDirectory, "status.json"), cancellationToken);
@@ -333,10 +333,12 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
         }
 
         var status = await ReadJsonAsync<JobStatusDocument>(Path.Combine(runDirectory, "status.json"), cancellationToken);
-        if (status is null || !string.Equals(status.State, "completed", StringComparison.OrdinalIgnoreCase))
+        if (status is null || IsActiveRunState(status.State))
         {
-            throw new InvalidOperationException("The run is not completed yet.");
+            throw new InvalidOperationException("The job is still in progress.");
         }
+        var result = await ReadJsonAsync<JobResultDocument>(Path.Combine(runDirectory, "result.json"), cancellationToken);
+        var manifest = await ReadJsonAsync<ManifestDocument>(Path.Combine(runDirectory, "manifest.json"), cancellationToken);
 
         Directory.CreateDirectory(paths.DownloadsRoot);
         var destination = Path.Combine(paths.DownloadsRoot, $"{jobId}.zip");
@@ -350,7 +352,9 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
 
         try
         {
-            await Task.Run(() => BuildExportPackage(runDirectory, jobId, stagingRoot), cancellationToken);
+            await Task.Run(
+                () => BuildExportPackage(runDirectory, jobId, stagingRoot, status, result, manifest),
+                cancellationToken);
             await Task.Run(
                 () => ZipFile.CreateFromDirectory(stagingRoot, destination, CompressionLevel.Fastest, includeBaseDirectory: false),
                 cancellationToken);
@@ -439,7 +443,7 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
                 continue;
             }
 
-            foreach (var runDirectory in Directory.EnumerateDirectories(root.Path, "run-*", SearchOption.TopDirectoryOnly))
+            foreach (var runDirectory in EnumerateJobDirectories(root.Path))
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var request = await ReadJsonAsync<JobRequestDocument>(Path.Combine(runDirectory, "request.json"), cancellationToken);
@@ -452,6 +456,9 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
                 var manifest = await ReadJsonAsync<ManifestDocument>(Path.Combine(runDirectory, "manifest.json"), cancellationToken);
                 var totalSizeBytes = manifest?.Items.Sum(static item => item.SizeBytes) ?? 0L;
                 var totalDurationSec = manifest?.Items.Sum(static item => item.DurationSeconds) ?? 0.0;
+                var hasDownloadableArchive = manifest?.Items.Any(item =>
+                    !string.IsNullOrWhiteSpace(item.MediaId) &&
+                    File.Exists(Path.Combine(runDirectory, "media", item.MediaId!, "timeline", "timeline.md"))) ?? false;
 
                 summaries.Add(new RunSummary
                 {
@@ -466,11 +473,13 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
                     VideosFailed = status.VideosFailed,
                     TotalSizeBytes = totalSizeBytes,
                     TotalDurationSec = totalDurationSec,
+                    EstimatedRemainingSec = status.EstimatedRemainingSec,
                     ProgressPercent = status.ProgressPercent > 0
                         ? status.ProgressPercent
                         : status.VideosTotal > 0
                             ? Math.Round(status.VideosDone * 100.0 / status.VideosTotal, 1)
                             : 0,
+                    HasDownloadableArchive = hasDownloadableArchive,
                     UpdatedAt = status.UpdatedAt,
                     CreatedAt = request.CreatedAt,
                 });
@@ -491,7 +500,7 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
         string processingQuality,
         CancellationToken cancellationToken)
     {
-        var jobId = $"run-{DateTimeOffset.Now:yyyyMMdd-HHmmss}-{Guid.NewGuid():N}"[..28];
+        var jobId = $"job-{DateTimeOffset.Now:yyyyMMdd-HHmmss}-{Guid.NewGuid():N}"[..28];
         var runDirectory = Path.Combine(outputRoot.Path, jobId);
         Directory.CreateDirectory(runDirectory);
         Directory.CreateDirectory(Path.Combine(runDirectory, "media"));
@@ -563,6 +572,18 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
         }
 
         return null;
+    }
+
+    private static IEnumerable<string> EnumerateJobDirectories(string rootPath)
+    {
+        if (!Directory.Exists(rootPath))
+        {
+            return [];
+        }
+
+        return Directory.EnumerateDirectories(rootPath, "job-*", SearchOption.TopDirectoryOnly)
+            .Concat(Directory.EnumerateDirectories(rootPath, "run-*", SearchOption.TopDirectoryOnly))
+            .Distinct(StringComparer.OrdinalIgnoreCase);
     }
 
     private async Task<T?> ReadJsonAsync<T>(string path, CancellationToken cancellationToken)
@@ -656,7 +677,7 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
                 continue;
             }
 
-            foreach (var runDirectory in Directory.EnumerateDirectories(root.Path, "run-*", SearchOption.TopDirectoryOnly))
+            foreach (var runDirectory in EnumerateJobDirectories(root.Path))
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var request = await ReadJsonAsync<JobRequestDocument>(Path.Combine(runDirectory, "request.json"), cancellationToken);
@@ -721,7 +742,17 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
         return candidate.StartsWith(normalizedRoot, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static void BuildExportPackage(string runDirectory, string jobId, string exportRoot)
+    private static bool IsActiveRunState(string? state) =>
+        string.Equals(state, "pending", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(state, "running", StringComparison.OrdinalIgnoreCase);
+
+    private static void BuildExportPackage(
+        string runDirectory,
+        string jobId,
+        string exportRoot,
+        JobStatusDocument? status,
+        JobResultDocument? result,
+        ManifestDocument? manifest)
     {
         Directory.CreateDirectory(exportRoot);
         var timelinesRoot = Path.Combine(exportRoot, "timelines");
@@ -767,11 +798,18 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
             .ThenBy(static row => row.MediaId, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
+        if (timelineRows.Count == 0)
+        {
+            throw new InvalidOperationException("No completed timelines are available to download for this job.");
+        }
+
         var transcriptionInfoPath = Path.Combine(runDirectory, "TRANSCRIPTION_INFO.md");
         if (File.Exists(transcriptionInfoPath))
         {
             File.Copy(transcriptionInfoPath, Path.Combine(exportRoot, "TRANSCRIPTION_INFO.md"), overwrite: true);
         }
+
+        var hasFailureArtifacts = WriteFailureArtifacts(runDirectory, exportRoot, jobId, status, result, manifest, timelineRows.Count);
 
         var packageInfo = string.Join(
             Environment.NewLine,
@@ -784,6 +822,8 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
                 "- Main folder: `timelines/`",
                 "- Each markdown file is one video timeline.",
                 "- `TRANSCRIPTION_INFO.md` explains which processing and models were used.",
+                hasFailureArtifacts ? "- `FAILURE_REPORT.md` summarizes any failed items or warnings from the job." : "",
+                hasFailureArtifacts ? "- `logs/worker.log` is included for troubleshooting." : "",
                 "",
             ]);
         File.WriteAllText(Path.Combine(exportRoot, "README.md"), packageInfo);
@@ -794,6 +834,113 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
             var fileName = EnsureUniqueExportFileName($"{row.Label}.md", usedNames);
             File.Copy(row.TimelinePath, Path.Combine(timelinesRoot, fileName), overwrite: true);
         }
+    }
+
+    private static bool WriteFailureArtifacts(
+        string runDirectory,
+        string exportRoot,
+        string jobId,
+        JobStatusDocument? status,
+        JobResultDocument? result,
+        ManifestDocument? manifest,
+        int exportedTimelineCount)
+    {
+        var failedItems = manifest?.Items
+            .Where(static item => string.Equals(item.Status, "failed", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(static item => item.OriginalPath, StringComparer.OrdinalIgnoreCase)
+            .ToList() ?? [];
+
+        var warnings = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var warning in status?.Warnings ?? [])
+        {
+            if (!string.IsNullOrWhiteSpace(warning))
+            {
+                warnings.Add(warning.Trim());
+            }
+        }
+
+        foreach (var warning in result?.Warnings ?? [])
+        {
+            if (!string.IsNullOrWhiteSpace(warning))
+            {
+                warnings.Add(warning.Trim());
+            }
+        }
+
+        var hasFailures =
+            failedItems.Count > 0 ||
+            (status?.VideosFailed ?? 0) > 0 ||
+            (result?.ErrorCount ?? 0) > 0 ||
+            string.Equals(status?.State, "failed", StringComparison.OrdinalIgnoreCase);
+
+        if (!hasFailures && warnings.Count == 0)
+        {
+            return false;
+        }
+
+        var lines = new List<string>
+        {
+            "# Failure Report",
+            "",
+            "This job produced downloadable timelines, but some items did not complete successfully.",
+            "",
+            $"- Job ID: `{jobId}`",
+            $"- Final state: `{status?.State ?? result?.State ?? "unknown"}`",
+            $"- Exported timelines: `{exportedTimelineCount}`",
+            $"- Completed items: `{status?.VideosDone ?? result?.ProcessedCount ?? 0}`",
+            $"- Failed items: `{status?.VideosFailed ?? result?.ErrorCount ?? failedItems.Count}`",
+            $"- Skipped items: `{status?.VideosSkipped ?? result?.SkippedCount ?? 0}`",
+        };
+
+        if (!string.IsNullOrWhiteSpace(status?.Message))
+        {
+            lines.Add($"- Final message: {status.Message}");
+        }
+
+        if (failedItems.Count > 0)
+        {
+            lines.Add("");
+            lines.Add("## Failed Items");
+            lines.Add("");
+            foreach (var item in failedItems)
+            {
+                var label = string.IsNullOrWhiteSpace(item.OriginalPath) ? item.FileName : item.OriginalPath;
+                if (!string.IsNullOrWhiteSpace(item.MediaId))
+                {
+                    lines.Add($"- `{label}` (`{item.MediaId}`)");
+                }
+                else
+                {
+                    lines.Add($"- `{label}`");
+                }
+            }
+        }
+
+        if (warnings.Count > 0)
+        {
+            lines.Add("");
+            lines.Add("## Warnings");
+            lines.Add("");
+            foreach (var warning in warnings)
+            {
+                lines.Add($"- {warning}");
+            }
+        }
+
+        var workerLogPath = Path.Combine(runDirectory, "logs", "worker.log");
+        if (File.Exists(workerLogPath))
+        {
+            var logsRoot = Path.Combine(exportRoot, "logs");
+            Directory.CreateDirectory(logsRoot);
+            File.Copy(workerLogPath, Path.Combine(logsRoot, "worker.log"), overwrite: true);
+            lines.Add("");
+            lines.Add("## Worker Log");
+            lines.Add("");
+            lines.Add("- See `logs/worker.log` for the full worker log captured for this job.");
+        }
+
+        File.WriteAllText(Path.Combine(exportRoot, "FAILURE_REPORT.md"), string.Join(Environment.NewLine, lines) + Environment.NewLine);
+        return true;
     }
 
     private static string BestExportLabel(string mediaId, SourceInfoExportDocument? sourceInfo)

@@ -4,7 +4,7 @@ import gc
 import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from .fs_utils import now_iso, write_text
 from .settings import load_huggingface_token, load_settings
@@ -21,6 +21,11 @@ def resolve_model_name_for_quality(value: str | None) -> str:
 def _is_cuda_oom(exc: Exception) -> bool:
     message = str(exc or "").lower()
     return "out of memory" in message or "cuda failed with error out of memory" in message
+
+
+def _is_cuda_runtime_failure(exc: Exception) -> bool:
+    message = str(exc or "").lower()
+    return "cuda failed with error" in message or "cuda error" in message
 
 
 def _initial_batch_size(device: str, processing_quality: str) -> int:
@@ -42,6 +47,56 @@ def _clear_torch_memory(torch_module: Any) -> None:
     gc.collect()
     if torch_module.cuda.is_available():
         torch_module.cuda.empty_cache()
+
+
+def _load_model_with_fallback(
+    *,
+    load_model: Callable[[str, str], Any],
+    torch_module: Any,
+    initial_device: str,
+    initial_compute_type: str,
+    initial_batch_size: int,
+    transcription_warnings: list[str],
+) -> tuple[Any, str, str, int]:
+    attempts: list[tuple[str, str, int, str | None]] = []
+
+    if initial_device == "cuda":
+        attempts.extend(
+            [
+                ("cuda", initial_compute_type, initial_batch_size, None),
+                (
+                    "cuda",
+                    "int8_float16",
+                    min(initial_batch_size, 8),
+                    "Primary GPU compute type failed to load; using int8_float16 instead.",
+                ),
+                (
+                    "cpu",
+                    "int8",
+                    4,
+                    "GPU model loading failed; transcription fell back to CPU.",
+                ),
+            ]
+        )
+    else:
+        attempts.append(("cpu", initial_compute_type, initial_batch_size, None))
+
+    last_error: Exception | None = None
+    for attempt_device, attempt_compute_type, batch_size, warning in attempts:
+        if warning:
+            transcription_warnings.append(warning)
+        try:
+            model = load_model(attempt_device, attempt_compute_type)
+            return model, attempt_device, attempt_compute_type, batch_size
+        except Exception as exc:
+            last_error = exc
+            if attempt_device != "cuda":
+                raise
+            _clear_torch_memory(torch_module)
+
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("Model loading did not produce a transcription model.")
 
 
 @dataclass
@@ -226,22 +281,20 @@ def transcribe_audio(
             language=language,
         )
 
-    try:
-        model = load_transcription_model(device, compute_type)
-    except Exception:
-        if device == "cuda":
-            compute_type = "int8_float16"
-            batch_size = min(batch_size, 8)
-            transcription_warnings.append(
-                "Primary GPU compute type failed to load; using int8_float16 instead."
-            )
-            model = load_transcription_model(device, compute_type)
-        else:
-            raise
+    model, device, compute_type, batch_size = _load_model_with_fallback(
+        load_model=load_transcription_model,
+        torch_module=torch,
+        initial_device=device,
+        initial_compute_type=compute_type,
+        initial_batch_size=batch_size,
+        transcription_warnings=transcription_warnings,
+    )
+    effective_compute_mode = "gpu" if device == "cuda" else "cpu"
 
     audio = whisperx.load_audio(str(trimmed_audio_path))
     result: dict[str, Any] | None = None
     last_error: Exception | None = None
+    cpu_fallback_warning: str | None = None
 
     for candidate_batch_size in _candidate_batch_sizes(batch_size):
         try:
@@ -251,17 +304,29 @@ def transcribe_audio(
                 language=language,
             )
             batch_size = candidate_batch_size
-            if candidate_batch_size != _initial_batch_size(device, resolved_quality):
+            if device == "cuda" and candidate_batch_size != _initial_batch_size(
+                device, resolved_quality
+            ):
                 transcription_warnings.append(
                     f"GPU batch size was reduced to {candidate_batch_size} to fit available memory."
                 )
             break
         except RuntimeError as exc:
-            if device != "cuda" or not _is_cuda_oom(exc):
+            if device != "cuda":
                 raise
             last_error = exc
             _clear_torch_memory(torch)
-            continue
+            if _is_cuda_oom(exc):
+                cpu_fallback_warning = (
+                    "GPU memory was insufficient for this audio; transcription fell back to CPU."
+                )
+                continue
+            if _is_cuda_runtime_failure(exc):
+                cpu_fallback_warning = (
+                    "GPU transcription failed with a CUDA runtime error; transcription fell back to CPU."
+                )
+                break
+            raise
 
     if result is None and device == "cuda":
         try:
@@ -274,7 +339,8 @@ def transcribe_audio(
         compute_type = "int8"
         batch_size = 4
         transcription_warnings.append(
-            "GPU memory was insufficient for this audio; transcription fell back to CPU."
+            cpu_fallback_warning
+            or "GPU transcription failed on CUDA; transcription fell back to CPU."
         )
         model = load_transcription_model(device, compute_type)
         result = model.transcribe(audio, batch_size=batch_size, language=language)

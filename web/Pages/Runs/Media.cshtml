@@ -1,5 +1,6 @@
-@page "/runs/{jobId}/{mediaId}"
+@page "/jobs/{jobId}/{mediaId}"
 @model Video2Timeline.Web.Pages.Runs.MediaModel
+@using Video2Timeline.Web.Infrastructure
 @inject Video2Timeline.Web.Services.LanguageService LanguageService
 @inject Video2Timeline.Web.Services.JsonLocalizationService Localizer
 @{
@@ -14,8 +15,8 @@
             <p class="eyebrow">@L("media.page_title")</p>
             <h1 class="page-title">@Model.MediaId</h1>
             <p class="page-description">
-                @L("media.run"):
-                <a class="text-sky-700 hover:text-sky-500" href="/runs/@Model.JobId">@Model.JobId</a>
+                @L("common.job"):
+                <a class="text-sky-700 hover:text-sky-500" href="@JobUrls.Details(Model.JobId)">@Model.JobId</a>
             </p>
         </div>
         <a class="btn-secondary" href="/jobs">@L("layout.jobs")</a>
