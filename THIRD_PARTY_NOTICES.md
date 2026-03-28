@@ -59,6 +59,8 @@ See [MODEL_AND_RUNTIME_NOTES.md](MODEL_AND_RUNTIME_NOTES.md) for operational not
 
 ## Notes for Redistribution
 
+- The initial public release line ships a source-based Windows launcher bundle. It does not publish an official Docker image or native installer.
+- The release bundle should contain launch scripts and source needed for local Docker builds, not generated runs, model caches, or private artifacts.
 - If you publish Docker images, confirm the exact FFmpeg package and its license conditions for that image.
 - If you upgrade pinned Python dependencies, review the resulting license set again.
 - Transitive dependencies pulled by `pip` or `dotnet restore` are not exhaustively listed here.

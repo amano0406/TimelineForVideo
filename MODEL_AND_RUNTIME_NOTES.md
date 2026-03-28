@@ -2,13 +2,14 @@
 
 This document explains what `video2timeline` downloads or expects at runtime and what users should know before running the app locally.
 
-## CPU-First Public Release
+## Public Release Contract
 
-The current public release is CPU-first.
+The current public release line is `video2timeline v0.3.0 Tech Preview`.
 
-- CPU processing is the supported path today.
-- GPU acceleration is planned, but it is not part of the current public release.
-- The UI may mention GPU support as coming soon, but current documentation and validation target CPU execution.
+- baseline support is Windows + Docker Desktop + CPU mode
+- macOS is an experimental source-based path
+- GPU mode is available only on supported NVIDIA + Docker GPU setups and is best-effort, not baseline support
+- this app is local-first and desktop-style, not a hosted SaaS service
 
 ## Models Used by the Worker
 
@@ -47,6 +48,8 @@ Speaker diarization is optional, but if you want it, two things are required:
 2. approval for the gated `pyannote/speaker-diarization-community-1` model page
 
 Without those two conditions, the app does not fail the whole job. It continues with transcription and timeline generation, but without speaker diarization.
+
+For the initial public release, this remains an optional feature, not part of the baseline support contract.
 
 ## OCR and Image Notes
 

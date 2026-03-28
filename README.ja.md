@@ -4,6 +4,18 @@
 
 [English README](README.md) | [サンプルタイムライン](docs/examples/sample-timeline.ja.md) | [第三者ライセンス](THIRD_PARTY_NOTICES.md) | [モデルと実行環境メモ](MODEL_AND_RUNTIME_NOTES.md) | [セキュリティと安全性](docs/SECURITY_AND_SAFETY.md) | [公開前チェック](docs/PUBLIC_RELEASE_CHECKLIST.md) | [ライセンス](LICENSE)
 
+## Public Release Status
+
+初回 public release の系列は `video2timeline v0.3.0 Tech Preview` です。
+
+現時点の public contract:
+
+- baseline support: Windows + Docker Desktop + CPU mode
+- macOS: source-based experimental path
+- GPU mode: optional, NVIDIA-only, best-effort
+- 話者分離は optional で、`pyannote/speaker-diarization-community-1` の gated approval と Hugging Face token が必要
+- これは local-first の desktop-style tool であり、hosted SaaS ではありません
+
 ## このアプリがやっていること
 
 このアプリは、手元にある動画ファイルを、LLM に渡しやすい ZIP 資料に変換するためのものです。
@@ -110,11 +122,15 @@ Windows:
 .\start.bat
 ```
 
+`v0.3.0` の public release では、これが primary supported path です。
+
 macOS:
 
 ```bash
 ./start.command
 ```
+
+こちらは `v0.3.0` では experimental な source-based path です。初回 public release の baseline support には含めません。
 
 起動後の流れ:
 
@@ -131,14 +147,17 @@ macOS:
 
 ## 必要なもの
 
-- Windows または macOS
+- primary supported path としての Windows
+- experimental な source-based path としての macOS
 - Docker Desktop
 - 初回のコンテナ・モデル取得用のインターネット接続
-- `pyannote` 話者分離を使う場合は Hugging Face token
-- `pyannote` の利用承認
+- `pyannote` 話者分離を使う場合のみ Hugging Face token
+- `pyannote` 話者分離を使う場合のみ gated approval
 - GPU モードを使う場合は NVIDIA GPU と Docker GPU 対応
 
 ## 計算モード
+
+public release の baseline は CPU mode です。
 
 - `CPU`
   - 幅広い環境で使える
@@ -146,6 +165,7 @@ macOS:
 - `GPU`
   - Docker から使える NVIDIA GPU が必要
   - 主な AI 処理が高速になる
+  - `v0.3.0` では best-effort 扱い
 
 処理精度:
 
@@ -189,6 +209,8 @@ macOS:
 ## CLI
 
 通常利用の入口は GUI です。必要なら worker CLI も使えます。
+
+初回 public release では GUI を primary path とします。CLI は advanced path であり、daemon と CLI を同時に回す運用は public support guarantee に含めません。
 
 主なコマンド:
 

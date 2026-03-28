@@ -4,6 +4,18 @@ Turn video files you already have into timeline markdown packages that are easie
 
 [Japanese README](README.ja.md) | [Sample Timeline](docs/examples/sample-timeline.en.md) | [Third-Party Notices](THIRD_PARTY_NOTICES.md) | [Model and Runtime Notes](MODEL_AND_RUNTIME_NOTES.md) | [Security And Safety](docs/SECURITY_AND_SAFETY.md) | [Release Checklist](docs/PUBLIC_RELEASE_CHECKLIST.md) | [License](LICENSE)
 
+## Public Release Status
+
+The initial public release line is `video2timeline v0.3.0 Tech Preview`.
+
+Current public contract:
+
+- baseline support: Windows + Docker Desktop + CPU mode
+- macOS: source-based experimental path
+- GPU mode: optional, NVIDIA-only, best-effort
+- speaker diarization: optional, requires a Hugging Face token plus gated approval for `pyannote/speaker-diarization-community-1`
+- this is a local-first desktop-style tool, not a hosted SaaS product
+
 ## What This App Does
 
 This app takes video files on your computer and turns them into a ZIP package that is easier to upload to an LLM.
@@ -109,11 +121,15 @@ Windows:
 .\start.bat
 ```
 
+This is the primary supported path for the `v0.3.0` public release line.
+
 macOS:
 
 ```bash
 ./start.command
 ```
+
+This path is available as an experimental source-based setup in `v0.3.0`. It is not the baseline support contract for the first public release.
 
 Then:
 
@@ -130,14 +146,17 @@ The start script tries to open an app-style window with Google Chrome, Microsoft
 
 ## Requirements
 
-- Windows or macOS
+- Windows for the primary supported path
+- macOS only if you are comfortable with an experimental source-based setup
 - Docker Desktop
 - internet access on first run for container and model downloads
-- optional Hugging Face token for `pyannote` diarization
-- required gated-model approval for `pyannote`
-- NVIDIA GPU plus Docker GPU access if you want GPU mode
+- optional Hugging Face token if you want `pyannote` diarization
+- optional gated-model approval for `pyannote`
+- NVIDIA GPU plus Docker GPU access if you want GPU mode on a best-effort basis
 
 ## Compute Modes
+
+The public release baseline is CPU mode.
 
 - `CPU`
   - works on more machines
@@ -145,6 +164,7 @@ The start script tries to open an app-style window with Google Chrome, Microsoft
 - `GPU`
   - requires NVIDIA GPU support inside Docker
   - faster for the main ML workloads
+  - best-effort in the `v0.3.0` public release line
 
 Processing quality:
 
@@ -188,6 +208,8 @@ English is the default on first launch. The selected language is stored in the a
 ## CLI
 
 The GUI is the main entry point. A worker CLI is also available for scripting and direct local execution.
+
+For the initial public release, the GUI is the primary supported path. The CLI is an advanced path, and concurrent daemon plus CLI operation is not part of the public support guarantee.
 
 Common commands:
 
