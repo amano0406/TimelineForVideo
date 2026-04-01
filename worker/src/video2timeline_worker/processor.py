@@ -10,6 +10,7 @@ from typing import Any, Callable
 from .catalog import append_catalog_rows, load_catalog
 from .config import ChangeDetectionConfig
 from .contracts import JobRequest, JobResult, JobStatus, ManifestItem
+from .eta import build_eta_predictor, estimate_remaining_seconds
 from .ffmpeg_utils import extract_audio, probe_video, trim_audio
 from .fs_utils import (
     append_log,
@@ -96,6 +97,29 @@ def _estimate_remaining(
     if rate <= 0:
         return None
     return max(0.0, (total_duration_sec - processed_duration_sec) / rate)
+
+
+def _estimate_remaining_with_history(
+    *,
+    predictor: Any,
+    manifest_items: list[ManifestItem],
+    legacy_remaining_sec: float | None,
+    current_item_index: int | None = None,
+    current_item_elapsed_sec: float = 0.0,
+    current_stage_name: str | None = None,
+    current_stage_elapsed_sec: float = 0.0,
+    include_export_stage: bool = True,
+) -> float | None:
+    return estimate_remaining_seconds(
+        predictor=predictor,
+        manifest_items=manifest_items,
+        legacy_remaining_sec=legacy_remaining_sec,
+        current_item_index=current_item_index,
+        current_item_elapsed_sec=current_item_elapsed_sec,
+        current_stage_name=current_stage_name,
+        current_stage_elapsed_sec=current_stage_elapsed_sec,
+        include_export_stage=include_export_stage,
+    )
 
 
 def _stage_expected_seconds(stage_name: str, media_duration_sec: float, compute_mode: str) -> float:
@@ -354,7 +378,7 @@ def _process_one_item(
     manifest_item: ManifestItem,
     thresholds: ChangeDetectionConfig,
     on_stage: Callable[[str, str], None] | None = None,
-) -> None:
+) -> list[str]:
     source_path = _resolve_input_path(item)
     media_dir = ensure_dir(job_dir / "media" / str(manifest_item.media_id))
     audio_dir = ensure_dir(media_dir / "audio")
@@ -374,7 +398,17 @@ def _process_one_item(
         "size_bytes": manifest_item.size_bytes,
         "duration_seconds": manifest_item.duration_seconds,
         "sha256": manifest_item.sha256,
-        "captured_at": manifest_item.__dict__.get("captured_at"),
+        "captured_at": manifest_item.captured_at,
+        "container_name": manifest_item.container_name,
+        "video_codec": manifest_item.video_codec,
+        "audio_codec": manifest_item.audio_codec,
+        "width": manifest_item.width,
+        "height": manifest_item.height,
+        "frame_rate": manifest_item.frame_rate,
+        "audio_channels": manifest_item.audio_channels,
+        "audio_sample_rate": manifest_item.audio_sample_rate,
+        "has_video": manifest_item.has_video,
+        "has_audio": manifest_item.has_audio,
     }
     write_json_atomic(media_dir / "source.json", source_info)
 
@@ -401,7 +435,7 @@ def _process_one_item(
     )
     if on_stage:
         on_stage("screen_extract", "Extracting screenshots and OCR notes.")
-    screen_notes, screen_diffs = extract_screens(
+    screen_notes, screen_diffs, item_warnings = extract_screens(
         video_path=source_path,
         screen_dir=screen_dir,
         duration_seconds=manifest_item.duration_seconds,
@@ -418,6 +452,7 @@ def _process_one_item(
         screen_notes=screen_notes,
         screen_diffs=screen_diffs,
     )
+    return item_warnings
 
 
 def process_job(job_dir: Path | None = None) -> bool:
@@ -442,6 +477,7 @@ def process_job(job_dir: Path | None = None) -> bool:
     status.state = "running"
     status.current_stage = "preflight"
     status.message = "Preparing job."
+    status.current_stage_elapsed_sec = 0.0
     status.progress_percent = max(status.progress_percent, 1.0)
     status.started_at = status.started_at or now_iso()
     _write_status(job_dir, status)
@@ -510,6 +546,17 @@ def process_job(job_dir: Path | None = None) -> bool:
                     duplicate_of=duplicate_of or None,
                     media_id=_make_media_id(input_item, file_hash),
                     status="queued",
+                    container_name=media_probe.get("container_name"),
+                    video_codec=media_probe.get("video_codec"),
+                    audio_codec=media_probe.get("audio_codec"),
+                    width=media_probe.get("width"),
+                    height=media_probe.get("height"),
+                    frame_rate=media_probe.get("frame_rate"),
+                    audio_channels=media_probe.get("audio_channels"),
+                    audio_sample_rate=media_probe.get("audio_sample_rate"),
+                    has_video=media_probe.get("has_video"),
+                    has_audio=media_probe.get("has_audio"),
+                    captured_at=media_probe.get("captured_at"),
                 )
             )
 
@@ -522,6 +569,17 @@ def process_job(job_dir: Path | None = None) -> bool:
         _write_manifest(job_dir, request.job_id, manifest_items)
         _write_status(job_dir, status)
         append_log(log_path, f"[{now_iso()}] Preflight complete for {len(manifest_items)} item(s).")
+        eta_predictor = build_eta_predictor(
+            output_root=Path(request.output_root_path),
+            current_job_id=request.job_id,
+            compute_mode=request.compute_mode,
+            processing_quality=request.processing_quality,
+        )
+        append_log(
+            log_path,
+            f"[{now_iso()}] ETA history loaded: {eta_predictor.sample_count} sample(s) "
+            f"for compute_mode={request.compute_mode}, quality={request.processing_quality}.",
+        )
 
         thresholds = ChangeDetectionConfig()
         completed_items: list[ManifestItem] = []
@@ -530,6 +588,7 @@ def process_job(job_dir: Path | None = None) -> bool:
         ):
             status.current_media = input_item.display_name
             status.current_media_elapsed_sec = 0.0
+            status.current_stage_elapsed_sec = 0.0
             status.current_stage = "extract_audio"
             status.message = f"Processing {index}/{len(manifest_items)}: {input_item.display_name}"
             status.progress_percent = _overall_progress_percent(
@@ -543,87 +602,16 @@ def process_job(job_dir: Path | None = None) -> bool:
                 completed_items=status.videos_done + status.videos_skipped + status.videos_failed,
             )
             _write_status(job_dir, status)
-            item_started = monotonic()
-            heartbeat_state = {
-                "stage_name": "extract_audio",
-                "media_duration_sec": max(1.0, manifest_item.duration_seconds),
-            }
-            heartbeat_stop = threading.Event()
-            heartbeat_lock = threading.Lock()
-
-            def heartbeat() -> None:
-                while not heartbeat_stop.wait(2.0):
-                    with heartbeat_lock:
-                        stage_name = str(heartbeat_state["stage_name"])
-                    elapsed = monotonic() - item_started
-                    completed_count = (
-                        status.videos_done + status.videos_skipped + status.videos_failed
-                    )
-                    current_fraction = _current_item_stage_fraction(
-                        stage_name,
-                        elapsed,
-                        manifest_item.duration_seconds,
-                        compute_mode,
-                    )
-                    effective_processed = status.processed_duration_sec + (
-                        manifest_item.duration_seconds * current_fraction
-                    )
-                    status.current_media_elapsed_sec = round(elapsed, 3)
-                    status.progress_percent = max(
-                        status.progress_percent,
-                        _overall_progress_percent(
-                            processed_duration_sec=status.processed_duration_sec,
-                            total_duration_sec=status.total_duration_sec,
-                            current_stage=stage_name,
-                            current_stage_elapsed_sec=elapsed,
-                            current_media_duration_sec=manifest_item.duration_seconds,
-                            compute_mode=compute_mode,
-                            total_items=max(len(manifest_items), 1),
-                            completed_items=completed_count,
-                        ),
-                    )
-                    status.estimated_remaining_sec = _estimate_remaining(
-                        status.total_duration_sec,
-                        effective_processed,
-                        monotonic() - started,
-                    )
-                    _write_status(job_dir, status)
-
-            heartbeat_thread = threading.Thread(target=heartbeat, daemon=True)
-            heartbeat_thread.start()
-
-            def stage_update(stage_name: str, message: str) -> None:
-                with heartbeat_lock:
-                    heartbeat_state["stage_name"] = stage_name
-                elapsed = monotonic() - item_started
-                status.current_stage = stage_name
-                status.message = message
-                status.current_media = input_item.display_name
-                status.current_media_elapsed_sec = round(elapsed, 3)
-                status.progress_percent = max(
-                    status.progress_percent,
-                    _overall_progress_percent(
-                        processed_duration_sec=status.processed_duration_sec,
-                        total_duration_sec=status.total_duration_sec,
-                        current_stage=stage_name,
-                        current_stage_elapsed_sec=elapsed,
-                        current_media_duration_sec=manifest_item.duration_seconds,
-                        compute_mode=compute_mode,
-                        total_items=max(len(manifest_items), 1),
-                        completed_items=status.videos_done
-                        + status.videos_skipped
-                        + status.videos_failed,
-                    ),
-                )
-                _write_status(job_dir, status)
-                append_log(log_path, f"[{now_iso()}] {stage_name}: {input_item.original_path}")
 
             if manifest_item.duplicate_status == "duplicate_skip":
                 manifest_item.status = "skipped_duplicate"
+                manifest_item.processing_wall_seconds = 0.0
+                manifest_item.stage_elapsed_seconds = {}
                 status.videos_skipped += 1
                 status.processed_duration_sec = round(
                     status.processed_duration_sec + manifest_item.duration_seconds, 3
                 )
+                status.current_stage_elapsed_sec = 0.0
                 status.progress_percent = _completed_progress_percent(
                     processed_duration_sec=status.processed_duration_sec,
                     total_duration_sec=status.total_duration_sec,
@@ -632,19 +620,179 @@ def process_job(job_dir: Path | None = None) -> bool:
                     + status.videos_skipped
                     + status.videos_failed,
                 )
-                status.estimated_remaining_sec = _estimate_remaining(
+                legacy_remaining = _estimate_remaining(
                     status.total_duration_sec,
                     status.processed_duration_sec,
                     monotonic() - started,
+                )
+                status.estimated_remaining_sec = _estimate_remaining_with_history(
+                    predictor=eta_predictor,
+                    manifest_items=manifest_items,
+                    legacy_remaining_sec=legacy_remaining,
+                    current_item_index=None,
+                    current_item_elapsed_sec=0.0,
                 )
                 _write_manifest(job_dir, request.job_id, manifest_items)
                 _write_status(job_dir, status)
                 append_log(log_path, f"[{now_iso()}] Skipped duplicate: {input_item.original_path}")
                 continue
 
+            item_started = monotonic()
+            heartbeat_state = {
+                "stage_name": "extract_audio",
+                "stage_started_at": item_started,
+                "media_duration_sec": max(1.0, manifest_item.duration_seconds),
+                "stage_elapsed_seconds": {},
+            }
+            heartbeat_stop = threading.Event()
+            heartbeat_lock = threading.Lock()
+
+            def snapshot_stage_state(now_value: float | None = None) -> tuple[str, float, dict[str, float]]:
+                reference = now_value if now_value is not None else monotonic()
+                with heartbeat_lock:
+                    stage_name = str(heartbeat_state["stage_name"])
+                    stage_started_at = float(heartbeat_state["stage_started_at"])
+                    completed_stage_seconds = {
+                        str(name): float(value)
+                        for name, value in dict(heartbeat_state["stage_elapsed_seconds"]).items()
+                    }
+                current_stage_elapsed = max(0.0, reference - stage_started_at)
+                stage_elapsed_snapshot = {
+                    name: round(max(0.0, value), 3)
+                    for name, value in completed_stage_seconds.items()
+                    if value > 0
+                }
+                stage_elapsed_snapshot[stage_name] = round(
+                    stage_elapsed_snapshot.get(stage_name, 0.0) + current_stage_elapsed,
+                    3,
+                )
+                return stage_name, round(current_stage_elapsed, 3), stage_elapsed_snapshot
+
+            def heartbeat() -> None:
+                while not heartbeat_stop.wait(2.0):
+                    now_value = monotonic()
+                    elapsed = now_value - item_started
+                    stage_name, current_stage_elapsed, _ = snapshot_stage_state(now_value)
+                    completed_count = (
+                        status.videos_done + status.videos_skipped + status.videos_failed
+                    )
+                    current_fraction = _current_item_stage_fraction(
+                        stage_name,
+                        current_stage_elapsed,
+                        manifest_item.duration_seconds,
+                        compute_mode,
+                    )
+                    effective_processed = status.processed_duration_sec + (
+                        manifest_item.duration_seconds * current_fraction
+                    )
+                    status.current_media_elapsed_sec = round(elapsed, 3)
+                    status.current_stage_elapsed_sec = current_stage_elapsed
+                    status.progress_percent = max(
+                        status.progress_percent,
+                        _overall_progress_percent(
+                            processed_duration_sec=status.processed_duration_sec,
+                            total_duration_sec=status.total_duration_sec,
+                            current_stage=stage_name,
+                            current_stage_elapsed_sec=current_stage_elapsed,
+                            current_media_duration_sec=manifest_item.duration_seconds,
+                            compute_mode=compute_mode,
+                            total_items=max(len(manifest_items), 1),
+                            completed_items=completed_count,
+                        ),
+                    )
+                    legacy_remaining = _estimate_remaining(
+                        status.total_duration_sec,
+                        effective_processed,
+                        monotonic() - started,
+                    )
+                    status.estimated_remaining_sec = _estimate_remaining_with_history(
+                        predictor=eta_predictor,
+                        manifest_items=manifest_items,
+                        legacy_remaining_sec=legacy_remaining,
+                        current_item_index=index - 1,
+                        current_item_elapsed_sec=elapsed,
+                        current_stage_name=stage_name,
+                        current_stage_elapsed_sec=current_stage_elapsed,
+                    )
+                    _write_status(job_dir, status)
+
+            heartbeat_thread = threading.Thread(target=heartbeat, daemon=True)
+            heartbeat_thread.start()
+
+            def stage_update(stage_name: str, message: str) -> None:
+                now_value = monotonic()
+                with heartbeat_lock:
+                    previous_stage_name = str(heartbeat_state["stage_name"])
+                    previous_stage_started_at = float(heartbeat_state["stage_started_at"])
+                    stage_elapsed_seconds = {
+                        str(name): float(value)
+                        for name, value in dict(heartbeat_state["stage_elapsed_seconds"]).items()
+                    }
+                    if stage_name != previous_stage_name:
+                        previous_stage_elapsed = max(0.0, now_value - previous_stage_started_at)
+                        stage_elapsed_seconds[previous_stage_name] = round(
+                            stage_elapsed_seconds.get(previous_stage_name, 0.0)
+                            + previous_stage_elapsed,
+                            3,
+                        )
+                        heartbeat_state["stage_name"] = stage_name
+                        heartbeat_state["stage_started_at"] = now_value
+                        heartbeat_state["stage_elapsed_seconds"] = stage_elapsed_seconds
+                        current_stage_elapsed = 0.0
+                    else:
+                        current_stage_elapsed = round(
+                            max(0.0, now_value - previous_stage_started_at),
+                            3,
+                        )
+                elapsed = now_value - item_started
+                status.current_stage = stage_name
+                status.message = message
+                status.current_media = input_item.display_name
+                status.current_media_elapsed_sec = round(elapsed, 3)
+                status.current_stage_elapsed_sec = current_stage_elapsed
+                status.progress_percent = max(
+                    status.progress_percent,
+                    _overall_progress_percent(
+                        processed_duration_sec=status.processed_duration_sec,
+                        total_duration_sec=status.total_duration_sec,
+                        current_stage=stage_name,
+                        current_stage_elapsed_sec=current_stage_elapsed,
+                        current_media_duration_sec=manifest_item.duration_seconds,
+                        compute_mode=compute_mode,
+                        total_items=max(len(manifest_items), 1),
+                        completed_items=status.videos_done
+                        + status.videos_skipped
+                        + status.videos_failed,
+                    ),
+                )
+                current_fraction = _current_item_stage_fraction(
+                    stage_name,
+                    current_stage_elapsed,
+                    manifest_item.duration_seconds,
+                    compute_mode,
+                )
+                effective_processed = status.processed_duration_sec + (
+                    manifest_item.duration_seconds * current_fraction
+                )
+                legacy_remaining = _estimate_remaining(
+                    status.total_duration_sec,
+                    effective_processed,
+                    monotonic() - started,
+                )
+                status.estimated_remaining_sec = _estimate_remaining_with_history(
+                    predictor=eta_predictor,
+                    manifest_items=manifest_items,
+                    legacy_remaining_sec=legacy_remaining,
+                    current_item_index=index - 1,
+                    current_item_elapsed_sec=elapsed,
+                    current_stage_name=stage_name,
+                    current_stage_elapsed_sec=current_stage_elapsed,
+                )
+                _write_status(job_dir, status)
+                append_log(log_path, f"[{now_iso()}] {stage_name}: {input_item.original_path}")
+
             try:
-                manifest_item.__dict__["captured_at"] = media_probe.get("captured_at")
-                _process_one_item(
+                item_warnings = _process_one_item(
                     job_dir=job_dir,
                     request=request,
                     item=input_item,
@@ -652,6 +800,10 @@ def process_job(job_dir: Path | None = None) -> bool:
                     thresholds=thresholds,
                     on_stage=stage_update,
                 )
+                for warning in item_warnings:
+                    warning_text = f"{input_item.display_name}: {warning}"
+                    warnings.append(warning_text)
+                    append_log(log_path, f"[{now_iso()}] Warning: {warning_text}")
                 manifest_item.status = "completed"
                 completed_items.append(manifest_item)
                 appended_catalog_rows.append(
@@ -683,21 +835,32 @@ def process_job(job_dir: Path | None = None) -> bool:
             finally:
                 heartbeat_stop.set()
                 heartbeat_thread.join(timeout=1.0)
+                _, _, stage_elapsed_snapshot = snapshot_stage_state()
+                manifest_item.processing_wall_seconds = round(monotonic() - item_started, 3)
+                manifest_item.stage_elapsed_seconds = stage_elapsed_snapshot
 
             status.processed_duration_sec = round(
                 status.processed_duration_sec + manifest_item.duration_seconds, 3
             )
             status.current_media_elapsed_sec = round(monotonic() - item_started, 3)
+            status.current_stage_elapsed_sec = 0.0
             status.progress_percent = _completed_progress_percent(
                 processed_duration_sec=status.processed_duration_sec,
                 total_duration_sec=status.total_duration_sec,
                 total_items=max(len(manifest_items), 1),
                 completed_items=status.videos_done + status.videos_skipped + status.videos_failed,
             )
-            status.estimated_remaining_sec = _estimate_remaining(
+            legacy_remaining = _estimate_remaining(
                 status.total_duration_sec,
                 status.processed_duration_sec,
                 monotonic() - started,
+            )
+            status.estimated_remaining_sec = _estimate_remaining_with_history(
+                predictor=eta_predictor,
+                manifest_items=manifest_items,
+                legacy_remaining_sec=legacy_remaining,
+                current_item_index=None,
+                current_item_elapsed_sec=0.0,
             )
             _write_manifest(job_dir, request.job_id, manifest_items)
             _write_status(job_dir, status)
@@ -709,6 +872,8 @@ def process_job(job_dir: Path | None = None) -> bool:
         status.message = "Building timeline batches."
         status.current_media = None
         status.current_media_elapsed_sec = 0.0
+        status.current_stage_elapsed_sec = 0.0
+        status.estimated_remaining_sec = _stage_expected_seconds("llm_export", 1.0, compute_mode)
         llm_export_started = monotonic()
         status.progress_percent = 95.0
         _write_status(job_dir, status)
@@ -730,6 +895,7 @@ def process_job(job_dir: Path | None = None) -> bool:
         status.warnings = warnings
         status.current_media = None
         status.current_media_elapsed_sec = 0.0
+        status.current_stage_elapsed_sec = 0.0
         status.estimated_remaining_sec = 0.0
         status.progress_percent = _overall_progress_percent(
             processed_duration_sec=status.processed_duration_sec,
@@ -754,6 +920,7 @@ def process_job(job_dir: Path | None = None) -> bool:
         status.current_stage = "failed"
         status.message = str(exc)
         status.warnings = warnings
+        status.current_stage_elapsed_sec = 0.0
         status.progress_percent = max(status.progress_percent, 1.0)
         status.completed_at = now_iso()
         _write_status(job_dir, status)

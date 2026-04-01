@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
@@ -58,6 +59,8 @@ internal sealed class TestAppFixture : IAsyncDisposable
 
     public string FailedNoTimelineJobId => "job-e2e-failed-no-timeline";
 
+    public string DuplicateUploadPath => Path.Combine(TempRoot, "fixtures", "already-processed.mp4");
+
     public static async Task<TestAppFixture> StartAsync()
     {
         var repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
@@ -88,6 +91,7 @@ internal sealed class TestAppFixture : IAsyncDisposable
         await SeedCompletedRunAsync(outputRoot);
         await SeedPartiallyFailedRunAsync(outputRoot);
         await SeedFailedRunWithoutTimelineAsync(outputRoot);
+        await SeedDuplicateCatalogEntryAsync(outputRoot, tempRoot);
 
         var appDllPath = Path.Combine(repoRoot, "web", "bin", "Debug", "net10.0", "Video2Timeline.Web.dll");
         var startInfo = new ProcessStartInfo("dotnet", $"\"{appDllPath}\" --urls http://127.0.0.1:{port}")
@@ -341,6 +345,36 @@ internal sealed class TestAppFixture : IAsyncDisposable
             Screen change:
             Initial frame.
             """);
+    }
+
+    private static async Task SeedDuplicateCatalogEntryAsync(string outputRoot, string tempRoot)
+    {
+        var fixturesRoot = Path.Combine(tempRoot, "fixtures");
+        Directory.CreateDirectory(fixturesRoot);
+
+        var duplicatePath = Path.Combine(fixturesRoot, "already-processed.mp4");
+        var duplicateBytes = Encoding.UTF8.GetBytes("video2timeline-e2e-duplicate-seed");
+        await File.WriteAllBytesAsync(duplicatePath, duplicateBytes);
+
+        var sha256 = Convert.ToHexString(SHA256.HashData(duplicateBytes)).ToLowerInvariant();
+        var catalogDirectory = Path.Combine(outputRoot, ".video2timeline");
+        Directory.CreateDirectory(catalogDirectory);
+
+        var catalogRow = new
+        {
+            job_id = "job-e2e-completed",
+            run_dir = Path.Combine(outputRoot, "job-e2e-completed").Replace("\\", "/"),
+            media_id = "sample-media-001",
+            sha256,
+            original_path = "already-processed.mp4",
+            duration_seconds = 12.5,
+            timeline_path = Path.Combine(outputRoot, "job-e2e-completed", "media", "sample-media-001", "timeline", "timeline.md").Replace("\\", "/"),
+            created_at = "2026-03-24T09:02:07+09:00",
+        };
+
+        await File.AppendAllTextAsync(
+            Path.Combine(catalogDirectory, "catalog.jsonl"),
+            JsonSerializer.Serialize(catalogRow) + Environment.NewLine);
     }
 
     private static async Task SeedPartiallyFailedRunAsync(string outputRoot)

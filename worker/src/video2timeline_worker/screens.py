@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -197,6 +198,51 @@ def _summarize(caption: str, ocr_lines: list[str], classification: str) -> str:
     return "Major visual change detected."
 
 
+def _frame_retry_timestamps(timestamp: float, duration_seconds: float) -> list[float]:
+    safe_end = max(0.0, duration_seconds - 0.05)
+    candidates = [
+        timestamp,
+        min(safe_end, max(0.0, timestamp - 0.25)),
+        min(safe_end, max(0.0, timestamp - 0.75)),
+        min(safe_end, max(0.0, timestamp - 1.5)),
+        safe_end,
+        0.0,
+    ]
+    timestamps: list[float] = []
+    for candidate in candidates:
+        value = round(candidate, 3)
+        if any(abs(existing - value) < 0.001 for existing in timestamps):
+            continue
+        timestamps.append(value)
+    return timestamps
+
+
+def _extract_frame_best_effort(
+    video_path: Path,
+    image_path: Path,
+    timestamp: float,
+    duration_seconds: float,
+) -> tuple[float | None, str | None]:
+    attempts = _frame_retry_timestamps(timestamp, duration_seconds)
+    last_error: subprocess.CalledProcessError | None = None
+    for candidate in attempts:
+        try:
+            extract_frame(video_path, image_path, candidate)
+            return candidate, None
+        except subprocess.CalledProcessError as exc:
+            last_error = exc
+
+    if last_error is None:
+        return None, None
+
+    stderr_text = " ".join((last_error.stderr or "").split())
+    detail = stderr_text[:240] if stderr_text else f"ffmpeg exited with status {last_error.returncode}"
+    return (
+        None,
+        f"Skipped screenshot at {timestamp:.3f}s after {len(attempts)} ffmpeg attempt(s): {detail}",
+    )
+
+
 def extract_screens(
     *,
     video_path: Path,
@@ -205,13 +251,14 @@ def extract_screens(
     thresholds: ChangeDetectionConfig,
     compute_mode: str | None,
     processing_quality: str | None,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+ ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[str]]:
     from .change_detection import compare_images
 
     ensure_dir(screen_dir)
     timestamps = candidate_timestamps(duration_seconds)
     frame_rows: list[dict[str, Any]] = []
     diff_rows: list[dict[str, Any]] = []
+    warnings: list[str] = []
     reader, captioner = _load_ocr_components(
         compute_mode=compute_mode,
         processing_quality=processing_quality,
@@ -221,13 +268,22 @@ def extract_screens(
     previous_timestamp: float | None = None
     for idx, timestamp in enumerate(timestamps, start=1):
         image_path = screen_dir / f"screenshot_{idx:02d}.jpg"
-        extract_frame(video_path, image_path, timestamp)
+        effective_timestamp, warning = _extract_frame_best_effort(
+            video_path,
+            image_path,
+            timestamp,
+            duration_seconds,
+        )
+        if warning:
+            warnings.append(warning)
+        if effective_timestamp is None:
+            continue
 
         if previous_path is None:
             classification = "major_change"
             diff_row = {
                 "index": idx,
-                "timestamp": timestamp,
+                "timestamp": effective_timestamp,
                 "classification": classification,
                 "previous_timestamp": None,
                 "changed": True,
@@ -238,7 +294,7 @@ def extract_screens(
             classification = comparison.classification
             diff_row = {
                 "index": idx,
-                "timestamp": timestamp,
+                "timestamp": effective_timestamp,
                 "classification": classification,
                 "previous_timestamp": previous_timestamp,
                 "changed": comparison.classification != "same",
@@ -257,7 +313,7 @@ def extract_screens(
             frame_rows.append(
                 {
                     "index": idx,
-                    "timestamp": timestamp,
+                    "timestamp": effective_timestamp,
                     "filename": image_path.name,
                     "summary": _summarize(caption, ocr_lines, classification),
                     "caption": caption,
@@ -267,7 +323,7 @@ def extract_screens(
             )
 
         previous_path = image_path
-        previous_timestamp = timestamp
+        previous_timestamp = effective_timestamp
 
     (screen_dir / "screenshots.jsonl").write_text(
         "\n".join(json.dumps(row, ensure_ascii=False) for row in frame_rows)
@@ -279,4 +335,4 @@ def extract_screens(
         + ("\n" if diff_rows else ""),
         encoding="utf-8",
     )
-    return frame_rows, diff_rows
+    return frame_rows, diff_rows, warnings

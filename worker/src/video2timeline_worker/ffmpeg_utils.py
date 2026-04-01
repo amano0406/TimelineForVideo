@@ -14,29 +14,48 @@ def run_command(args: list[str], check: bool = True) -> subprocess.CompletedProc
     return subprocess.run(args, check=check, text=True, capture_output=True)
 
 
-def probe_video(path: Path) -> dict[str, Any]:
-    completed = run_command(
-        [
-            "ffprobe",
-            "-v",
-            "error",
-            "-show_entries",
-            "format=duration,size",
-            "-show_streams",
-            "-print_format",
-            "json",
-            str(path),
-        ]
-    )
-    payload = json.loads(completed.stdout)
-    duration = float(payload.get("format", {}).get("duration") or 0.0)
-    size = int(payload.get("format", {}).get("size") or path.stat().st_size)
-    format_tags = payload.get("format", {}).get("tags") or {}
+def _parse_optional_int(value: Any) -> int | None:
+    if value in (None, "", "N/A"):
+        return None
+
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_optional_ratio(value: Any) -> float | None:
+    if value in (None, "", "N/A", "0/0"):
+        return None
+
+    text = str(value).strip()
+    if "/" in text:
+        left, right = text.split("/", 1)
+        try:
+            denominator = float(right)
+            if denominator == 0:
+                return None
+            return round(float(left) / denominator, 3)
+        except (TypeError, ValueError):
+            return None
+
+    try:
+        return round(float(text), 3)
+    except (TypeError, ValueError):
+        return None
+
+
+def summarize_probe_payload(payload: dict[str, Any], path: Path) -> dict[str, Any]:
+    format_info = payload.get("format", {}) or {}
+    streams = payload.get("streams", []) or []
+    duration = float(format_info.get("duration") or 0.0)
+    size = int(format_info.get("size") or path.stat().st_size)
+    format_tags = format_info.get("tags") or {}
     stream_tags = (
         next(
             (
                 stream.get("tags")
-                for stream in payload.get("streams", [])
+                for stream in streams
                 if isinstance(stream.get("tags"), dict)
                 and stream.get("tags", {}).get("creation_time")
             ),
@@ -45,12 +64,60 @@ def probe_video(path: Path) -> dict[str, Any]:
         or {}
     )
     creation_time = format_tags.get("creation_time") or stream_tags.get("creation_time")
+
+    video_stream = next(
+        (stream for stream in streams if str(stream.get("codec_type") or "").lower() == "video"),
+        None,
+    )
+    audio_stream = next(
+        (stream for stream in streams if str(stream.get("codec_type") or "").lower() == "audio"),
+        None,
+    )
+
+    format_name = str(format_info.get("format_name") or "").strip()
+    if format_name:
+        format_name = format_name.split(",", 1)[0].strip()
+
     return {
         "duration_seconds": duration,
         "size_bytes": size,
-        "streams": payload.get("streams", []),
+        "streams": streams,
         "captured_at": creation_time,
+        "container_name": format_name or None,
+        "video_codec": str(video_stream.get("codec_name") or "").strip() or None
+        if video_stream
+        else None,
+        "audio_codec": str(audio_stream.get("codec_name") or "").strip() or None
+        if audio_stream
+        else None,
+        "width": _parse_optional_int(video_stream.get("width")) if video_stream else None,
+        "height": _parse_optional_int(video_stream.get("height")) if video_stream else None,
+        "frame_rate": _parse_optional_ratio(
+            (video_stream or {}).get("avg_frame_rate") or (video_stream or {}).get("r_frame_rate")
+        ),
+        "audio_channels": _parse_optional_int(audio_stream.get("channels")) if audio_stream else None,
+        "audio_sample_rate": _parse_optional_int(audio_stream.get("sample_rate")) if audio_stream else None,
+        "has_video": video_stream is not None,
+        "has_audio": audio_stream is not None,
     }
+
+
+def probe_video(path: Path) -> dict[str, Any]:
+    completed = run_command(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration,size,format_name",
+            "-show_streams",
+            "-print_format",
+            "json",
+            str(path),
+        ]
+    )
+    payload = json.loads(completed.stdout)
+    return summarize_probe_payload(payload, path)
 
 
 def extract_audio(video_path: Path, output_path: Path) -> None:

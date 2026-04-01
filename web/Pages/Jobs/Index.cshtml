@@ -22,6 +22,7 @@
 
     string FormatSize(long valueBytes) => DisplayFormatters.FormatFileSize(valueBytes, L);
     string FormatDuration(double? valueSeconds) => DisplayFormatters.FormatDurationFriendly(valueSeconds, L);
+    string FormatDurationOrDash(double? valueSeconds) => valueSeconds.HasValue ? FormatDuration(valueSeconds) : "-";
     string FormatCreatedAt(string? value) => DisplayFormatters.FormatCreatedAt(value);
     double Percent(double raw, int done, int total)
     {
@@ -99,6 +100,10 @@
                     <div class="metric-value">@FormatDuration(Model.ActiveRun.TotalDurationSec)</div>
                 </div>
                 <div class="metric-card">
+                    <div class="metric-label">@L("common.elapsed")</div>
+                    <div class="metric-value">@FormatDurationOrDash(Model.ActiveRun.ElapsedWallSec)</div>
+                </div>
+                <div class="metric-card">
                     <div class="metric-label">@L("details.remaining_time")</div>
                     <div class="metric-value">@FormatDuration(Model.ActiveRun.EstimatedRemainingSec)</div>
                 </div>
@@ -139,6 +144,7 @@
                         <th>@L("common.progress")</th>
                         <th>@L("common.total_size")</th>
                         <th>@L("common.total_duration")</th>
+                        <th>@L("common.elapsed")</th>
                         <th>@L("common.created")</th>
                         <th>@L("common.actions")</th>
                     </tr>
@@ -147,7 +153,7 @@
                     @if (Model.RecentRuns.Count == 0)
                     {
                         <tr>
-                            <td colspan="7" class="px-4 py-8 text-center text-sm text-slate-500">@L("common.no_items")</td>
+                            <td colspan="8" class="px-4 py-8 text-center text-sm text-slate-500">@L("common.no_items")</td>
                         </tr>
                     }
                     else
@@ -178,6 +184,7 @@
                                 </td>
                                 <td>@FormatSize(run.TotalSizeBytes)</td>
                                 <td>@FormatDuration(run.TotalDurationSec)</td>
+                                <td>@FormatDurationOrDash(run.ElapsedWallSec)</td>
                                 <td>@FormatCreatedAt(run.CreatedAt)</td>
                                 <td>
                                     <div class="flex flex-wrap gap-2">

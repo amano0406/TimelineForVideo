@@ -46,6 +46,10 @@
     string PercentLabel(double value) => $"{Math.Round(value, 1):0.0}%";
 
     string FormatDurationFriendly(double? seconds) => DisplayFormatters.FormatDurationFriendly(seconds, L);
+    string FormatDurationOrDash(double? seconds) => seconds.HasValue ? FormatDurationFriendly(seconds) : "-";
+    var currentFileElapsed = string.IsNullOrWhiteSpace(status?.CurrentMedia)
+        ? "-"
+        : FormatDurationFriendly(status?.CurrentMediaElapsedSec);
 
     ViewData["Title"] = L("details.page_title");
     var progressPercent = Percent(status?.ProgressPercent, status?.VideosDone ?? 0, status?.VideosTotal ?? 0);
@@ -71,7 +75,7 @@
         </div>
     </div>
 
-    <section class="grid gap-4 lg:grid-cols-4">
+    <section class="grid gap-4 lg:grid-cols-5">
         <div class="metric-card">
             <div class="metric-label">@L("common.state")</div>
             <div class="metric-value">
@@ -92,6 +96,10 @@
             <div class="metric-value">@status?.VideosFailed</div>
         </div>
         <div class="metric-card">
+            <div class="metric-label">@L("details.elapsed_time")</div>
+            <div class="metric-value">@FormatDurationOrDash(run.ElapsedWallSec)</div>
+        </div>
+        <div class="metric-card">
             <div class="metric-label">@L("details.remaining_time")</div>
             <div class="metric-value">@FormatDurationFriendly(status?.EstimatedRemainingSec)</div>
         </div>
@@ -105,6 +113,10 @@
                     <div>
                         <dt class="text-slate-500">@L("details.current_file")</dt>
                         <dd>@status?.CurrentMedia</dd>
+                    </div>
+                    <div>
+                        <dt class="text-slate-500">@L("details.current_file_elapsed")</dt>
+                        <dd>@currentFileElapsed</dd>
                     </div>
                     <div>
                         <dt class="text-slate-500">@L("details.message")</dt>

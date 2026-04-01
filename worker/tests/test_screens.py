@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+import subprocess
+import tempfile
+import types
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
 from video2timeline_worker.screens import (
     candidate_timestamps,
+    extract_screens,
     normalize_processing_quality,
     resolve_caption_model_id_for_quality,
 )
+from video2timeline_worker.config import ChangeDetectionConfig
 
 
 class CandidateTimestampsTests(unittest.TestCase):
@@ -39,6 +46,84 @@ class ProcessingQualityTests(unittest.TestCase):
             resolve_caption_model_id_for_quality("high"),
             "florence-community/Florence-2-base",
         )
+
+
+class ExtractScreensTests(unittest.TestCase):
+    def test_extract_screens_retries_failed_timestamp_and_continues(self) -> None:
+        attempts: list[float] = []
+
+        def fake_extract_frame(video_path: Path, image_path: Path, timestamp: float) -> None:
+            attempts.append(timestamp)
+            if len(attempts) == 1:
+                raise subprocess.CalledProcessError(234, ["ffmpeg"], stderr="decode failure")
+            image_path.write_bytes(b"jpg")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            screen_dir = Path(tmpdir) / "screen"
+            fake_change_detection = types.SimpleNamespace(
+                compare_images=lambda prev, curr, thresholds: types.SimpleNamespace(
+                    classification="same",
+                    phash_distance=0,
+                    mean_diff=0.0,
+                )
+            )
+            with (
+                patch("video2timeline_worker.screens.candidate_timestamps", return_value=[596.473]),
+                patch("video2timeline_worker.screens.extract_frame", side_effect=fake_extract_frame),
+                patch("video2timeline_worker.screens._load_ocr_components", return_value=(None, None)),
+                patch.dict("sys.modules", {"video2timeline_worker.change_detection": fake_change_detection}),
+            ):
+                notes, diffs, warnings = extract_screens(
+                    video_path=Path("/tmp/video.mp4"),
+                    screen_dir=screen_dir,
+                    duration_seconds=600.0,
+                    thresholds=ChangeDetectionConfig(),
+                    compute_mode="cpu",
+                    processing_quality="standard",
+                )
+
+        self.assertEqual(warnings, [])
+        self.assertEqual(len(notes), 1)
+        self.assertEqual(len(diffs), 1)
+        self.assertEqual(attempts[:2], [596.473, 596.223])
+        self.assertAlmostEqual(notes[0]["timestamp"], 596.223, places=3)
+        self.assertAlmostEqual(diffs[0]["timestamp"], 596.223, places=3)
+
+    def test_extract_screens_skips_unrecoverable_frame_and_returns_warning(self) -> None:
+        def fake_extract_frame(video_path: Path, image_path: Path, timestamp: float) -> None:
+            if abs(timestamp - 20.0) > 0.001:
+                raise subprocess.CalledProcessError(234, ["ffmpeg"], stderr="bad frame")
+            image_path.write_bytes(b"jpg")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            screen_dir = Path(tmpdir) / "screen"
+            fake_change_detection = types.SimpleNamespace(
+                compare_images=lambda prev, curr, thresholds: types.SimpleNamespace(
+                    classification="same",
+                    phash_distance=0,
+                    mean_diff=0.0,
+                )
+            )
+            with (
+                patch("video2timeline_worker.screens.candidate_timestamps", return_value=[10.0, 20.0]),
+                patch("video2timeline_worker.screens.extract_frame", side_effect=fake_extract_frame),
+                patch("video2timeline_worker.screens._load_ocr_components", return_value=(None, None)),
+                patch.dict("sys.modules", {"video2timeline_worker.change_detection": fake_change_detection}),
+            ):
+                notes, diffs, warnings = extract_screens(
+                    video_path=Path("/tmp/video.mp4"),
+                    screen_dir=screen_dir,
+                    duration_seconds=30.0,
+                    thresholds=ChangeDetectionConfig(),
+                    compute_mode="cpu",
+                    processing_quality="standard",
+                )
+
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("Skipped screenshot at 10.000s", warnings[0])
+        self.assertEqual(len(notes), 1)
+        self.assertEqual(len(diffs), 1)
+        self.assertAlmostEqual(notes[0]["timestamp"], 20.0, places=3)
 
 
 if __name__ == "__main__":

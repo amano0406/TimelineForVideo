@@ -52,6 +52,33 @@ public static class DisplayFormatters
         return parsed.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.CurrentCulture);
     }
 
+    public static double? CalculateElapsedSeconds(
+        string? startedAt,
+        string? completedAt = null,
+        string? updatedAt = null)
+    {
+        if (!DateTimeOffset.TryParse(startedAt, out var started))
+        {
+            return null;
+        }
+
+        DateTimeOffset finishedAt;
+        if (DateTimeOffset.TryParse(completedAt, out var completed))
+        {
+            finishedAt = completed;
+        }
+        else if (DateTimeOffset.TryParse(updatedAt, out var updated))
+        {
+            finishedAt = updated;
+        }
+        else
+        {
+            finishedAt = DateTimeOffset.Now;
+        }
+
+        return Math.Max(0, (finishedAt - started).TotalSeconds);
+    }
+
     private static string FormatCompactNumber(double value)
     {
         var absoluteValue = Math.Abs(value);

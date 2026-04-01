@@ -120,6 +120,25 @@
     </div>
 </section>
 
+<section class="modal-shell hidden" id="decision-modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="decision-modal-title">
+    <div class="modal-backdrop" data-modal-close="true"></div>
+    <div class="modal-card">
+        <div class="space-y-4">
+            <div class="space-y-2">
+                <p class="eyebrow">@L("common.confirm")</p>
+                <h2 class="section-title" id="decision-modal-title"></h2>
+                <p class="page-description !mt-0" id="decision-modal-message"></p>
+            </div>
+            <ul class="modal-list hidden" id="decision-modal-list"></ul>
+            <div class="flex flex-wrap items-center justify-end gap-3">
+                <button type="button" class="btn-secondary hidden" id="decision-modal-cancel">@L("common.cancel")</button>
+                <button type="button" class="btn-secondary hidden" id="decision-modal-secondary"></button>
+                <button type="button" class="btn-primary" id="decision-modal-primary">@L("common.ok")</button>
+            </div>
+        </div>
+    </div>
+</section>
+
 @section Scripts
 {
     <script>
@@ -141,14 +160,24 @@
             const progressPercent = document.getElementById("upload-progress-percent");
             const progressBar = document.getElementById("upload-progress-bar");
             const cancelButton = document.getElementById("upload-cancel-button");
+            const decisionModal = document.getElementById("decision-modal");
+            const decisionModalTitle = document.getElementById("decision-modal-title");
+            const decisionModalMessage = document.getElementById("decision-modal-message");
+            const decisionModalList = document.getElementById("decision-modal-list");
+            const decisionModalCancel = document.getElementById("decision-modal-cancel");
+            const decisionModalSecondary = document.getElementById("decision-modal-secondary");
+            const decisionModalPrimary = document.getElementById("decision-modal-primary");
 
-            if (!form || !filesInput || !directoryInput || !pickFilesButton || !pickFolderButton || !executeButton || !selectedItemsList || !selectedItemsEmpty || !selectedItemsCount || !selectionCountLabel || !selectionFeedback || !progressPanel || !progressTitle || !progressMessage || !progressPercent || !progressBar || !cancelButton) {
+            if (!form || !filesInput || !directoryInput || !pickFilesButton || !pickFolderButton || !executeButton || !selectedItemsList || !selectedItemsEmpty || !selectedItemsCount || !selectionCountLabel || !selectionFeedback || !progressPanel || !progressTitle || !progressMessage || !progressPercent || !progressBar || !cancelButton || !decisionModal || !decisionModalTitle || !decisionModalMessage || !decisionModalList || !decisionModalCancel || !decisionModalSecondary || !decisionModalPrimary) {
                 return;
             }
 
             const allowedExtensions = new Set(@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.AllowedExtensions.Select(static value => value.ToLowerInvariant()))));
             const messages = {
+                ok: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("common.ok"))),
+                cancel: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("common.cancel"))),
                 selectInput: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.select_input"))),
+                selectInputTitle: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.select_input_title"))),
                 pickFiles: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.pick_files"))),
                 pickFolder: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.pick_folder"))),
                 selectedEmpty: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.selected_empty"))),
@@ -156,6 +185,13 @@
                 sourceFiles: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.source_files"))),
                 sourceFolder: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.source_folder"))),
                 duplicateSummary: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.duplicate_summary"))),
+                duplicatePromptTitle: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.duplicate_prompt_title"))),
+                duplicatePromptMessage: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.duplicate_prompt_message"))),
+                duplicatePromptMessageAll: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.duplicate_prompt_message_all"))),
+                duplicatePromptSkip: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.duplicate_prompt_skip"))),
+                duplicatePromptReprocess: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.duplicate_prompt_reprocess"))),
+                duplicateNoJobTitle: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.duplicate_no_job_title"))),
+                duplicateNoJobMessage: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.duplicate_no_job_message"))),
                 unsupportedSummary: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.unsupported_summary"))),
                 uploadPreparing: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.upload_preparing"))),
                 uploadRunning: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.upload_running"))),
@@ -184,6 +220,7 @@
             let cancelRequested = false;
             let suppressLeaveWarning = false;
             let selectionSequence = 0;
+            let decisionModalResolve = null;
             const selectedEntries = [];
             const selectionKeys = new Set();
             const selectionFeedbackState = {
@@ -378,6 +415,82 @@
                 progressBar.style.width = `${percent}%`;
             };
 
+            const closeDecisionModal = (result = "cancel") => {
+                decisionModal.classList.add("hidden");
+                decisionModal.setAttribute("aria-hidden", "true");
+                decisionModalTitle.textContent = "";
+                decisionModalMessage.textContent = "";
+                decisionModalList.innerHTML = "";
+                decisionModalList.classList.add("hidden");
+                decisionModalCancel.classList.add("hidden");
+                decisionModalSecondary.classList.add("hidden");
+                decisionModalPrimary.textContent = messages.ok;
+                const resolve = decisionModalResolve;
+                decisionModalResolve = null;
+                resolve?.(result);
+            };
+
+            const showDecisionModal = ({
+                title,
+                message,
+                items = [],
+                primaryText,
+                primaryValue = "primary",
+                secondaryText = null,
+                secondaryValue = "secondary",
+                cancelText = null,
+                cancelValue = "cancel"
+            }) => new Promise((resolve) => {
+                decisionModalResolve = resolve;
+                decisionModalTitle.textContent = title;
+                decisionModalMessage.textContent = message;
+                decisionModalList.innerHTML = "";
+                if (items.length > 0) {
+                    for (const item of items) {
+                        const row = document.createElement("li");
+                        row.className = "modal-list-item";
+                        row.textContent = item;
+                        decisionModalList.appendChild(row);
+                    }
+                    decisionModalList.classList.remove("hidden");
+                } else {
+                    decisionModalList.classList.add("hidden");
+                }
+
+                decisionModalPrimary.textContent = primaryText;
+                decisionModalPrimary.dataset.result = primaryValue;
+
+                if (secondaryText) {
+                    decisionModalSecondary.textContent = secondaryText;
+                    decisionModalSecondary.dataset.result = secondaryValue;
+                    decisionModalSecondary.classList.remove("hidden");
+                } else {
+                    decisionModalSecondary.classList.add("hidden");
+                    delete decisionModalSecondary.dataset.result;
+                }
+
+                if (cancelText) {
+                    decisionModalCancel.textContent = cancelText;
+                    decisionModalCancel.dataset.result = cancelValue;
+                    decisionModalCancel.classList.remove("hidden");
+                } else {
+                    decisionModalCancel.classList.add("hidden");
+                    delete decisionModalCancel.dataset.result;
+                }
+
+                decisionModal.classList.remove("hidden");
+                decisionModal.setAttribute("aria-hidden", "false");
+                window.setTimeout(() => decisionModalPrimary.focus(), 0);
+            });
+
+            const showInfoModal = (title, message, items = []) => showDecisionModal({
+                title,
+                message,
+                items,
+                primaryText: messages.ok,
+                primaryValue: "ok"
+            });
+
             const readErrorMessage = async (response) => {
                 try {
                     const payload = await response.clone().json();
@@ -456,7 +569,20 @@
 
             window.addEventListener("beforeunload", handleBeforeUnload);
 
+            decisionModalPrimary.addEventListener("click", () => closeDecisionModal(decisionModalPrimary.dataset.result || "primary"));
+            decisionModalSecondary.addEventListener("click", () => closeDecisionModal(decisionModalSecondary.dataset.result || "secondary"));
+            decisionModalCancel.addEventListener("click", () => closeDecisionModal(decisionModalCancel.dataset.result || "cancel"));
+            decisionModal.querySelectorAll("[data-modal-close='true']").forEach((element) => {
+                element.addEventListener("click", () => closeDecisionModal());
+            });
+
             document.addEventListener("keydown", (event) => {
+                if (event.key === "Escape" && !decisionModal.classList.contains("hidden")) {
+                    event.preventDefault();
+                    closeDecisionModal();
+                    return;
+                }
+
                 if (!uploadInProgress) {
                     return;
                 }
@@ -476,7 +602,7 @@
 
                 const selectedFiles = collectFiles();
                 if (selectedFiles.length === 0) {
-                    window.alert(messages.selectInput);
+                    await showInfoModal(messages.selectInputTitle, messages.selectInput);
                     return;
                 }
 
@@ -555,12 +681,87 @@
                     const completed = await completeResponse.json();
                     uploadedItems.push(...(completed.items || []));
 
+                    const duplicateResponse = await fetch("/api/jobs/duplicates", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        signal: uploadController.signal,
+                        body: JSON.stringify({
+                            uploadedFiles: uploadedItems
+                        })
+                    });
+                    if (!duplicateResponse.ok) {
+                        throw new Error(await readErrorMessage(duplicateResponse));
+                    }
+
+                    const duplicatePreview = await duplicateResponse.json();
+                    let filesForJob = uploadedItems;
+                    let reprocessDuplicates = false;
+
+                    if ((duplicatePreview.duplicateCount || 0) > 0) {
+                        setBusy(false);
+                        uploadController = null;
+
+                        const duplicateItems = (duplicatePreview.duplicates || []).map((item) => item.displayName);
+                        const duplicateMessage = duplicatePreview.newCount > 0
+                            ? format(
+                                messages.duplicatePromptMessage,
+                                duplicatePreview.duplicateCount,
+                                duplicatePreview.totalCount,
+                                duplicatePreview.newCount)
+                            : format(
+                                messages.duplicatePromptMessageAll,
+                                duplicatePreview.duplicateCount);
+
+                        const choice = await showDecisionModal({
+                            title: messages.duplicatePromptTitle,
+                            message: duplicateMessage,
+                            items: duplicateItems,
+                            primaryText: messages.duplicatePromptReprocess,
+                            primaryValue: "reprocess",
+                            secondaryText: messages.duplicatePromptSkip,
+                            secondaryValue: "skip",
+                            cancelText: messages.cancel,
+                            cancelValue: "cancel"
+                        });
+
+                        if (choice === "cancel") {
+                            await cleanupSession();
+                            setBusy(false);
+                            uploadController = null;
+                            return;
+                        }
+
+                        if (choice === "skip") {
+                            const duplicateReferenceIds = new Set(
+                                (duplicatePreview.duplicates || []).map((item) => item.referenceId));
+                            filesForJob = uploadedItems.filter((item) => !duplicateReferenceIds.has(item.referenceId));
+
+                            if (filesForJob.length === 0) {
+                                await cleanupSession();
+                                setBusy(false);
+                                uploadController = null;
+                                await showInfoModal(
+                                    messages.duplicateNoJobTitle,
+                                    messages.duplicateNoJobMessage,
+                                    duplicateItems);
+                                return;
+                            }
+                        } else {
+                            reprocessDuplicates = true;
+                        }
+
+                        setBusy(true);
+                        uploadController = new AbortController();
+                    }
+
                     updateProgress(100, messages.uploadCreatingJob, messages.uploadCreatingJob);
                     const jobResponse = await fetch("/api/jobs", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
+                        signal: uploadController.signal,
                         body: JSON.stringify({
-                            uploadedFiles: uploadedItems
+                            uploadedFiles: filesForJob,
+                            reprocessDuplicates
                         })
                     });
                     if (!jobResponse.ok) {

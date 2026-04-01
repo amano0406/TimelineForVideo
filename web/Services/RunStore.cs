@@ -1,5 +1,7 @@
 using System.IO.Compression;
+using System.Security.Cryptography;
 using System.Text.Json;
+using Video2Timeline.Web.Infrastructure;
 using Video2Timeline.Web.Models;
 
 namespace Video2Timeline.Web.Services;
@@ -60,9 +62,7 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
         CancellationToken cancellationToken = default)
     {
         var settings = await settingsStore.LoadAsync(cancellationToken);
-        var outputRoot = settings.OutputRoots
-            .FirstOrDefault(root => root.Enabled && string.Equals(root.Id, command.OutputRootId, StringComparison.OrdinalIgnoreCase))
-            ?? settings.OutputRoots.FirstOrDefault(static root => root.Enabled);
+        var outputRoot = ResolveOutputRoot(settings, command.OutputRootId);
         if (outputRoot is null)
         {
             throw new InvalidOperationException("No enabled output root is configured.");
@@ -120,6 +120,31 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
             settings.ComputeMode,
             settings.ProcessingQuality,
             cancellationToken);
+    }
+
+    public async Task<DuplicatePreviewResponse> PreviewDuplicatesAsync(
+        DuplicatePreviewRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var settings = await settingsStore.LoadAsync(cancellationToken);
+        var outputRoot = ResolveOutputRoot(settings, request.OutputRootId);
+        if (outputRoot is null)
+        {
+            throw new InvalidOperationException("No enabled output root is configured.");
+        }
+
+        var duplicates = await FindDuplicateUploadsAsync(
+            outputRoot.Path,
+            request.UploadedFiles,
+            cancellationToken);
+
+        return new DuplicatePreviewResponse
+        {
+            TotalCount = request.UploadedFiles.Count,
+            DuplicateCount = duplicates.Count,
+            NewCount = Math.Max(0, request.UploadedFiles.Count - duplicates.Count),
+            Duplicates = duplicates,
+        };
     }
 
     public async Task<RunSummary?> GetActiveRunAsync(CancellationToken cancellationToken = default)
@@ -399,6 +424,10 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
             Manifest = await ReadJsonAsync<ManifestDocument>(Path.Combine(runDirectory, "manifest.json"), cancellationToken),
             LogTail = await ReadLogTailAsync(Path.Combine(runDirectory, "logs", "worker.log"), cancellationToken),
         };
+        details.ElapsedWallSec = DisplayFormatters.CalculateElapsedSeconds(
+            details.Status?.StartedAt,
+            details.Status?.CompletedAt,
+            details.Status?.UpdatedAt);
 
         details.TimelineItems = details.Manifest?.Items
             .Where(static item => !string.IsNullOrWhiteSpace(item.MediaId))
@@ -473,6 +502,10 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
                     VideosFailed = status.VideosFailed,
                     TotalSizeBytes = totalSizeBytes,
                     TotalDurationSec = totalDurationSec,
+                    ElapsedWallSec = DisplayFormatters.CalculateElapsedSeconds(
+                        status.StartedAt,
+                        status.CompletedAt,
+                        status.UpdatedAt),
                     EstimatedRemainingSec = status.EstimatedRemainingSec,
                     ProgressPercent = status.ProgressPercent > 0
                         ? status.ProgressPercent
@@ -559,6 +592,11 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
         return (jobId, runDirectory);
     }
 
+    private static RootOption? ResolveOutputRoot(AppSettingsDocument settings, string? outputRootId) =>
+        settings.OutputRoots
+            .FirstOrDefault(root => root.Enabled && string.Equals(root.Id, outputRootId, StringComparison.OrdinalIgnoreCase))
+        ?? settings.OutputRoots.FirstOrDefault(static root => root.Enabled);
+
     private async Task<string?> FindRunDirectoryAsync(string jobId, CancellationToken cancellationToken)
     {
         var settings = await settingsStore.LoadAsync(cancellationToken);
@@ -606,6 +644,96 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
         }
 
         await File.WriteAllTextAsync(path, JsonSerializer.Serialize(value, _jsonOptions), cancellationToken);
+    }
+
+    private static async Task<List<DuplicatePreviewItem>> FindDuplicateUploadsAsync(
+        string outputRootPath,
+        IReadOnlyList<UploadedFileReference> uploadedFiles,
+        CancellationToken cancellationToken)
+    {
+        var duplicates = new List<DuplicatePreviewItem>();
+        var catalogIndex = await LoadCatalogIndexAsync(outputRootPath, cancellationToken);
+
+        foreach (var file in uploadedFiles.Where(static file =>
+                     !string.IsNullOrWhiteSpace(file.StoredPath) &&
+                     File.Exists(file.StoredPath)))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var sha256 = await ComputeSha256Async(file.StoredPath!, cancellationToken);
+            if (!catalogIndex.TryGetValue(sha256, out var catalogRow))
+            {
+                continue;
+            }
+
+            duplicates.Add(new DuplicatePreviewItem
+            {
+                ReferenceId = file.ReferenceId,
+                DisplayName = file.OriginalName,
+                ExistingJobId = GetOptionalString(catalogRow, "job_id"),
+                ExistingMediaId = GetOptionalString(catalogRow, "media_id"),
+                TimelinePath = GetOptionalString(catalogRow, "timeline_path"),
+            });
+        }
+
+        return duplicates;
+    }
+
+    private static async Task<Dictionary<string, JsonElement>> LoadCatalogIndexAsync(
+        string outputRootPath,
+        CancellationToken cancellationToken)
+    {
+        var path = Path.Combine(outputRootPath, ".video2timeline", "catalog.jsonl");
+        var rows = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
+        if (!File.Exists(path))
+        {
+            return rows;
+        }
+
+        var lines = await File.ReadAllLinesAsync(path, cancellationToken);
+        foreach (var line in lines)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                continue;
+            }
+
+            using var document = JsonDocument.Parse(line);
+            if (!document.RootElement.TryGetProperty("sha256", out var shaElement))
+            {
+                continue;
+            }
+
+            var sha256 = shaElement.GetString();
+            if (string.IsNullOrWhiteSpace(sha256))
+            {
+                continue;
+            }
+
+            rows[sha256] = document.RootElement.Clone();
+        }
+
+        return rows;
+    }
+
+    private static async Task<string> ComputeSha256Async(string path, CancellationToken cancellationToken)
+    {
+        await using var stream = File.OpenRead(path);
+        var hash = await SHA256.HashDataAsync(stream, cancellationToken);
+        return Convert.ToHexString(hash).ToLowerInvariant();
+    }
+
+    private static string? GetOptionalString(JsonElement payload, string propertyName)
+    {
+        if (!payload.TryGetProperty(propertyName, out var value))
+        {
+            return null;
+        }
+
+        return value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : value.ToString();
     }
 
     private static async Task<string> ReadLogTailAsync(string path, CancellationToken cancellationToken)

@@ -593,6 +593,19 @@ code {
   width: min(100%, 42rem);
 }
 
+.modal-list {
+  margin: 0;
+  padding-left: 1.15rem;
+  color: var(--app-text);
+  display: grid;
+  gap: 0.45rem;
+}
+
+.modal-list-item {
+  line-height: 1.45;
+  word-break: break-word;
+}
+
 .theme-picker {
   display: grid;
   gap: 0.75rem;

@@ -78,6 +78,7 @@ class JobStatus:
     videos_failed: int = 0
     current_media: str | None = None
     current_media_elapsed_sec: float = 0.0
+    current_stage_elapsed_sec: float = 0.0
     processed_duration_sec: float = 0.0
     total_duration_sec: float = 0.0
     estimated_remaining_sec: float | None = None
@@ -122,6 +123,19 @@ class ManifestItem:
     duplicate_of: str | None = None
     media_id: str | None = None
     status: str = "pending"
+    container_name: str | None = None
+    video_codec: str | None = None
+    audio_codec: str | None = None
+    width: int | None = None
+    height: int | None = None
+    frame_rate: float | None = None
+    audio_channels: int | None = None
+    audio_sample_rate: int | None = None
+    has_video: bool | None = None
+    has_audio: bool | None = None
+    captured_at: str | None = None
+    processing_wall_seconds: float | None = None
+    stage_elapsed_seconds: dict[str, float] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

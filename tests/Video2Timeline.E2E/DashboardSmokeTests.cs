@@ -59,6 +59,35 @@ public sealed class DashboardSmokeTests : PageTest
     }
 
     [TestMethod]
+    public async Task NewJob_UsesModal_When_NoInputIsSelected()
+    {
+        await Page.GotoAsync($"{_fixture.BaseUrl}/jobs/new");
+
+        await Page.GetByRole(AriaRole.Button, new() { Name = "Start" }).ClickAsync();
+
+        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Choose Videos First" })).ToBeVisibleAsync();
+        await Page.GetByRole(AriaRole.Button, new() { Name = "OK" }).ClickAsync();
+        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Choose Videos First" })).ToHaveCountAsync(0);
+    }
+
+    [TestMethod]
+    public async Task NewJob_ShowsDuplicateDecisionModal_ForPreviouslyConvertedUpload()
+    {
+        await Page.GotoAsync($"{_fixture.BaseUrl}/jobs/new");
+
+        await Page.Locator("#upload-files-input").SetInputFilesAsync(_fixture.DuplicateUploadPath);
+        await Expect(Page.Locator("#selected-items-list").GetByText("already-processed.mp4")).ToBeVisibleAsync();
+
+        await Page.GetByRole(AriaRole.Button, new() { Name = "Start" }).ClickAsync();
+
+        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Previously Converted Files Found" })).ToBeVisibleAsync();
+        await Expect(Page.Locator("#decision-modal-list").GetByText("already-processed.mp4")).ToBeVisibleAsync();
+        await Page.GetByRole(AriaRole.Button, new() { Name = "Cancel" }).ClickAsync();
+        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Previously Converted Files Found" })).ToHaveCountAsync(0);
+        await Expect(Page).ToHaveURLAsync(new Regex(".*/jobs/new$"));
+    }
+
+    [TestMethod]
     public async Task Jobs_Page_Shows_Completed_Run()
     {
         await Page.GotoAsync($"{_fixture.BaseUrl}/jobs");
@@ -69,6 +98,7 @@ public sealed class DashboardSmokeTests : PageTest
         await Expect(Page.GetByText(_fixture.CompletedJobId)).ToBeVisibleAsync();
         await Expect(row).ToContainTextAsync("1 MB");
         await Expect(row).ToContainTextAsync("1m 10s");
+        await Expect(row).ToContainTextAsync("2m 7s");
         await Expect(row.GetByRole(AriaRole.Link, new() { Name = "ZIP" })).ToBeVisibleAsync();
     }
 
@@ -78,6 +108,8 @@ public sealed class DashboardSmokeTests : PageTest
         await Page.GotoAsync($"{_fixture.BaseUrl}/jobs/{_fixture.CompletedJobId}");
 
         await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = _fixture.CompletedJobId })).ToBeVisibleAsync();
+        await Expect(Page.GetByText("Elapsed Time")).ToBeVisibleAsync();
+        await Expect(Page.GetByText("2m 7s")).ToBeVisibleAsync();
         await Expect(Page.GetByRole(AriaRole.Link, new() { Name = "Download ZIP" })).ToBeVisibleAsync();
         await Expect(Page.GetByRole(AriaRole.Link, new() { Name = _fixture.CompletedMediaId })).ToBeVisibleAsync();
 

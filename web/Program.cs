@@ -221,6 +221,22 @@ app.MapPost("/api/jobs", async (CreateJobCommand command, RunStore runStore, Can
     }
 });
 
+app.MapPost("/api/jobs/duplicates", async (
+    DuplicatePreviewRequest request,
+    RunStore runStore,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        var preview = await runStore.PreviewDuplicatesAsync(request, cancellationToken);
+        return Results.Ok(preview);
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
 app.MapGet("/api/jobs/{id}", async (string id, RunStore runStore, CancellationToken cancellationToken) =>
 {
     var status = await runStore.GetJobStatusAsync(id, cancellationToken);

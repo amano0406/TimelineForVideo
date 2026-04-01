@@ -149,6 +149,48 @@ public sealed class CreateJobCommand
     public List<UploadedFileReference> UploadedFiles { get; set; } = [];
 }
 
+public sealed class DuplicatePreviewRequest
+{
+    [JsonPropertyName("outputRootId")]
+    public string OutputRootId { get; set; } = "runs";
+
+    [JsonPropertyName("uploadedFiles")]
+    public List<UploadedFileReference> UploadedFiles { get; set; } = [];
+}
+
+public sealed class DuplicatePreviewItem
+{
+    [JsonPropertyName("referenceId")]
+    public string ReferenceId { get; set; } = "";
+
+    [JsonPropertyName("displayName")]
+    public string DisplayName { get; set; } = "";
+
+    [JsonPropertyName("existingJobId")]
+    public string? ExistingJobId { get; set; }
+
+    [JsonPropertyName("existingMediaId")]
+    public string? ExistingMediaId { get; set; }
+
+    [JsonPropertyName("timelinePath")]
+    public string? TimelinePath { get; set; }
+}
+
+public sealed class DuplicatePreviewResponse
+{
+    [JsonPropertyName("totalCount")]
+    public int TotalCount { get; set; }
+
+    [JsonPropertyName("duplicateCount")]
+    public int DuplicateCount { get; set; }
+
+    [JsonPropertyName("newCount")]
+    public int NewCount { get; set; }
+
+    [JsonPropertyName("duplicates")]
+    public List<DuplicatePreviewItem> Duplicates { get; set; } = [];
+}
+
 public sealed class HuggingFaceSaveRequest
 {
     [JsonPropertyName("token")]
@@ -363,6 +405,9 @@ public sealed class JobStatusDocument
     [JsonPropertyName("current_media_elapsed_sec")]
     public double CurrentMediaElapsedSec { get; set; }
 
+    [JsonPropertyName("current_stage_elapsed_sec")]
+    public double CurrentStageElapsedSec { get; set; }
+
     [JsonPropertyName("processed_duration_sec")]
     public double ProcessedDurationSec { get; set; }
 
@@ -458,6 +503,45 @@ public sealed class ManifestItemDocument
 
     [JsonPropertyName("status")]
     public string Status { get; set; } = "pending";
+
+    [JsonPropertyName("container_name")]
+    public string? ContainerName { get; set; }
+
+    [JsonPropertyName("video_codec")]
+    public string? VideoCodec { get; set; }
+
+    [JsonPropertyName("audio_codec")]
+    public string? AudioCodec { get; set; }
+
+    [JsonPropertyName("width")]
+    public int? Width { get; set; }
+
+    [JsonPropertyName("height")]
+    public int? Height { get; set; }
+
+    [JsonPropertyName("frame_rate")]
+    public double? FrameRate { get; set; }
+
+    [JsonPropertyName("audio_channels")]
+    public int? AudioChannels { get; set; }
+
+    [JsonPropertyName("audio_sample_rate")]
+    public int? AudioSampleRate { get; set; }
+
+    [JsonPropertyName("has_video")]
+    public bool? HasVideo { get; set; }
+
+    [JsonPropertyName("has_audio")]
+    public bool? HasAudio { get; set; }
+
+    [JsonPropertyName("captured_at")]
+    public string? CapturedAt { get; set; }
+
+    [JsonPropertyName("processing_wall_seconds")]
+    public double? ProcessingWallSeconds { get; set; }
+
+    [JsonPropertyName("stage_elapsed_seconds")]
+    public Dictionary<string, double> StageElapsedSeconds { get; set; } = [];
 }
 
 public sealed class ManifestDocument
@@ -488,6 +572,7 @@ public sealed class RunSummary
     public int VideosFailed { get; set; }
     public long TotalSizeBytes { get; set; }
     public double TotalDurationSec { get; set; }
+    public double? ElapsedWallSec { get; set; }
     public double? EstimatedRemainingSec { get; set; }
     public double ProgressPercent { get; set; }
     public bool HasDownloadableArchive { get; set; }
@@ -507,6 +592,7 @@ public sealed class RunDetails
 {
     public string JobId { get; set; } = "";
     public string RunDirectory { get; set; } = "";
+    public double? ElapsedWallSec { get; set; }
     public JobStatusDocument? Status { get; set; }
     public JobResultDocument? Result { get; set; }
     public ManifestDocument? Manifest { get; set; }
