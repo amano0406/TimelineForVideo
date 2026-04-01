@@ -1,6 +1,7 @@
 @page "/jobs/{id}"
 @model Video2Timeline.Web.Pages.Runs.DetailsModel
 @using Video2Timeline.Web.Infrastructure
+@using Video2Timeline.Web.Models
 @inject Video2Timeline.Web.Services.LanguageService LanguageService
 @inject Video2Timeline.Web.Services.JsonLocalizationService Localizer
 @{
@@ -18,9 +19,26 @@
 
     string StageLabel(string? value)
     {
+        if (string.Equals(value, "skipped_duplicate", StringComparison.OrdinalIgnoreCase))
+        {
+            return L("details.reused");
+        }
+
         var key = $"stage.{(value ?? string.Empty).ToLowerInvariant()}";
         var label = L(key);
         return label == key ? value ?? "-" : label;
+    }
+
+    string ComputeModeLabel(string? value)
+    {
+        var normalized = string.Equals(value, "gpu", StringComparison.OrdinalIgnoreCase) ? "gpu" : "cpu";
+        return L($"settings.compute_mode.{normalized}");
+    }
+
+    string ProcessingQualityLabel(string? value)
+    {
+        var normalized = string.Equals(value, "high", StringComparison.OrdinalIgnoreCase) ? "high" : "standard";
+        return L($"settings.processing_quality.{normalized}");
     }
 
     string StateBadgeClass(string? value) => (value ?? string.Empty).ToLowerInvariant() switch
@@ -33,14 +51,23 @@
         _ => "status-badge status-badge-neutral",
     };
 
-    double Percent(double? raw, int done, int total)
+    int CompletedCount(JobStatusDocument? source) =>
+        (source?.VideosDone ?? 0) + (source?.VideosSkipped ?? 0) + (source?.VideosFailed ?? 0);
+
+    string ProgressCounter(JobStatusDocument? source) =>
+        $"{CompletedCount(source)} / {source?.VideosTotal ?? 0}";
+
+    string ProgressBreakdown(JobStatusDocument? source) =>
+        $"{L("details.processed")} {source?.VideosDone ?? 0} | {L("details.reused")} {source?.VideosSkipped ?? 0} | {L("details.errors")} {source?.VideosFailed ?? 0}";
+
+    double Percent(double? raw, int completed, int total)
     {
         if (raw.HasValue && raw.Value > 0)
         {
             return Math.Clamp(raw.Value, 0, 100);
         }
 
-        return total <= 0 ? 0 : Math.Round(done * 100.0 / total, 1);
+        return total <= 0 ? 0 : Math.Round(completed * 100.0 / total, 1);
     }
 
     string PercentLabel(double value) => $"{Math.Round(value, 1):0.0}%";
@@ -52,13 +79,22 @@
         : FormatDurationFriendly(status?.CurrentMediaElapsedSec);
 
     ViewData["Title"] = L("details.page_title");
-    var progressPercent = Percent(status?.ProgressPercent, status?.VideosDone ?? 0, status?.VideosTotal ?? 0);
+    var progressPercent = Percent(status?.ProgressPercent, CompletedCount(status), status?.VideosTotal ?? 0);
     var isActive = string.Equals(status?.State, "pending", StringComparison.OrdinalIgnoreCase) ||
                    string.Equals(status?.State, "running", StringComparison.OrdinalIgnoreCase);
     var canDownloadArchive = !isActive && run.TimelineItems.Count > 0;
+    var hasReusedOnlyWithoutTimeline = run.TimelineItems.Count == 0 && (status?.VideosSkipped ?? 0) > 0;
+    var canRerun = !isActive && (run.Request?.InputItems.Count ?? 0) > 0;
 }
 
 <section class="app-page space-y-6" data-active="@(isActive ? "true" : "false")" id="job-details">
+    @if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+    {
+        <section class="panel notice-panel">
+            @Model.StatusMessage
+        </section>
+    }
+
     <div class="panel page-header">
         <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div class="space-y-2">
@@ -86,7 +122,8 @@
         <div class="metric-card">
             <div class="metric-label">@L("common.progress")</div>
             <div class="metric-value">@PercentLabel(progressPercent)</div>
-            <div class="metric-subtle">@status?.VideosDone / @status?.VideosTotal</div>
+            <div class="metric-subtle">@ProgressCounter(status)</div>
+            <div class="metric-subtle">@ProgressBreakdown(status)</div>
             <div class="progress-track mt-3">
                 <div class="progress-fill" style="width:@(progressPercent.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture))%"></div>
             </div>
@@ -107,6 +144,46 @@
 
     <section class="grid gap-8 xl:grid-cols-[0.95fr_1.05fr]">
         <div class="space-y-8">
+            <div class="panel">
+                <h2 class="section-title">@L("details.rerun")</h2>
+                <p class="page-description mt-2">@L("details.rerun_description")</p>
+                <dl class="mt-4 grid gap-4 text-sm text-slate-700 md:grid-cols-2">
+                    <div>
+                        <dt class="text-slate-500">@L("details.original_settings")</dt>
+                        <dd class="mt-2 space-y-1">
+                            <div>@L("details.compute_mode"): @ComputeModeLabel(run.Request?.ComputeMode)</div>
+                            <div>@L("details.processing_quality"): @ProcessingQualityLabel(run.Request?.ProcessingQuality)</div>
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="text-slate-500">@L("details.current_settings")</dt>
+                        <dd class="mt-2 space-y-1">
+                            <div>@L("details.compute_mode"): @ComputeModeLabel(run.CurrentSettings?.ComputeMode)</div>
+                            <div>@L("details.processing_quality"): @ProcessingQualityLabel(run.CurrentSettings?.ProcessingQuality)</div>
+                        </dd>
+                    </div>
+                </dl>
+                @if (canRerun)
+                {
+                    <div class="mt-6 flex flex-wrap gap-3">
+                        <form method="post" asp-page-handler="Rerun" class="inline">
+                            <input type="hidden" name="id" value="@run.JobId" />
+                            <input type="hidden" name="mode" value="original" />
+                            <button type="submit" class="btn-secondary">@L("details.rerun_original")</button>
+                        </form>
+                        <form method="post" asp-page-handler="Rerun" class="inline">
+                            <input type="hidden" name="id" value="@run.JobId" />
+                            <input type="hidden" name="mode" value="current" />
+                            <button type="submit" class="btn-primary">@L("details.rerun_current")</button>
+                        </form>
+                    </div>
+                    <div class="mt-4 space-y-1 text-xs text-slate-500">
+                        <p>@L("details.rerun_original_note")</p>
+                        <p>@L("details.rerun_current_note")</p>
+                    </div>
+                }
+            </div>
+
             <div class="panel">
                 <h2 class="section-title">@L("details.current_processing")</h2>
                 <dl class="mt-4 grid gap-4 text-sm text-slate-700 md:grid-cols-2">
@@ -141,7 +218,7 @@
                         <dd>@result?.ProcessedCount</dd>
                     </div>
                     <div>
-                        <dt class="text-slate-500">@L("details.skipped")</dt>
+                        <dt class="text-slate-500">@L("details.reused")</dt>
                         <dd>@result?.SkippedCount</dd>
                     </div>
                     <div>
@@ -177,7 +254,7 @@
                         @if (run.TimelineItems.Count == 0)
                         {
                             <tr>
-                                <td colspan="3" class="px-4 py-8 text-center text-sm text-slate-500">@L("details.generated_timeline_empty")</td>
+                                <td colspan="3" class="px-4 py-8 text-center text-sm text-slate-500">@(hasReusedOnlyWithoutTimeline ? L("details.generated_timeline_reused_missing") : L("details.generated_timeline_empty"))</td>
                             </tr>
                         }
                         else
@@ -189,7 +266,16 @@
                                         <a class="text-sky-700 hover:text-sky-500" href="@JobUrls.Media(run.JobId, item.MediaId)">@item.MediaId</a>
                                     </td>
                                     <td>@StageLabel(item.Status)</td>
-                                    <td class="text-slate-600">@item.SourcePath</td>
+                                    <td class="text-slate-600">
+                                        <div>@item.SourcePath</div>
+                                        @if (item.IsReferencedDuplicate && !string.IsNullOrWhiteSpace(item.ReferencedJobId))
+                                        {
+                                            <div class="mt-1 text-xs text-slate-500">
+                                                @($"{L("details.reused_from_job")}:")
+                                                <a class="text-sky-700 hover:text-sky-500" href="@JobUrls.Details(item.ReferencedJobId!)">@item.ReferencedJobId</a>
+                                            </div>
+                                        }
+                                    </td>
                                 </tr>
                             }
                         }

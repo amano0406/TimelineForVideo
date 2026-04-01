@@ -103,6 +103,38 @@ public sealed class DashboardSmokeTests : PageTest
     }
 
     [TestMethod]
+    public async Task Jobs_Page_Prefers_Running_Run_In_Active_Panel()
+    {
+        var runningJobId = await _fixture.CreateRunningRunAsync();
+        var pendingJobId = await _fixture.CreatePendingRunAsync();
+        try
+        {
+            await Page.GotoAsync($"{_fixture.BaseUrl}/jobs");
+
+            var activePanel = Page.Locator("section.panel").Filter(new() { HasText = "Now Processing" });
+            await Expect(activePanel).ToContainTextAsync(runningJobId);
+            await Expect(activePanel).Not.ToContainTextAsync(pendingJobId);
+        }
+        finally
+        {
+            await _fixture.DeleteRunAsync(runningJobId);
+            await _fixture.DeleteRunAsync(pendingJobId);
+        }
+    }
+
+    [TestMethod]
+    public async Task Jobs_Page_Counts_Skipped_Items_In_Progress_And_Shows_Zip()
+    {
+        await Page.GotoAsync($"{_fixture.BaseUrl}/jobs");
+
+        var row = Page.Locator("tr").Filter(new() { HasText = _fixture.DuplicateSkippedJobId });
+        await Expect(row).ToContainTextAsync(_fixture.DuplicateSkippedJobId);
+        await Expect(row).ToContainTextAsync("1 / 1");
+        await Expect(row).ToContainTextAsync("Processed 0 | Reused 1 | Errors 0");
+        await Expect(row.GetByRole(AriaRole.Link, new() { Name = "ZIP" })).ToBeVisibleAsync();
+    }
+
+    [TestMethod]
     public async Task CompletedRunDetails_ExposeZip_AndTimeline()
     {
         await Page.GotoAsync($"{_fixture.BaseUrl}/jobs/{_fixture.CompletedJobId}");
@@ -110,6 +142,14 @@ public sealed class DashboardSmokeTests : PageTest
         await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = _fixture.CompletedJobId })).ToBeVisibleAsync();
         await Expect(Page.GetByText("Elapsed Time")).ToBeVisibleAsync();
         await Expect(Page.GetByText("2m 7s")).ToBeVisibleAsync();
+        await Expect(Page.GetByText("This Job Settings", new() { Exact = true })).ToBeVisibleAsync();
+        await Expect(Page.GetByText("Compute Mode: CPU")).ToBeVisibleAsync();
+        await Expect(Page.GetByText("Processing Quality: Standard")).ToBeVisibleAsync();
+        await Expect(Page.GetByText("Current Settings", new() { Exact = true })).ToBeVisibleAsync();
+        await Expect(Page.GetByText("Compute Mode: GPU")).ToBeVisibleAsync();
+        await Expect(Page.GetByText("Processing Quality: High")).ToBeVisibleAsync();
+        await Expect(Page.GetByRole(AriaRole.Button, new() { Name = "Run Again With Same Settings" })).ToBeVisibleAsync();
+        await Expect(Page.GetByRole(AriaRole.Button, new() { Name = "Run Again With Current Settings" })).ToBeVisibleAsync();
         await Expect(Page.GetByRole(AriaRole.Link, new() { Name = "Download ZIP" })).ToBeVisibleAsync();
         await Expect(Page.GetByRole(AriaRole.Link, new() { Name = _fixture.CompletedMediaId })).ToBeVisibleAsync();
 
@@ -117,6 +157,41 @@ public sealed class DashboardSmokeTests : PageTest
         await Expect(Page).ToHaveURLAsync(new Regex($".*/jobs/{_fixture.CompletedJobId}/{_fixture.CompletedMediaId}$"));
         await Expect(Page.Locator("pre")).ToContainTextAsync("Video Timeline");
         await Expect(Page.Locator("pre")).ToContainTextAsync("public test sample");
+    }
+
+    [TestMethod]
+    public async Task DuplicateSkippedRunDetails_Show_ReusedTimeline()
+    {
+        await Page.GotoAsync($"{_fixture.BaseUrl}/jobs/{_fixture.DuplicateSkippedJobId}");
+
+        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = _fixture.DuplicateSkippedJobId })).ToBeVisibleAsync();
+        await Expect(Page.GetByText("1 / 1")).ToBeVisibleAsync();
+        await Expect(Page.GetByText("Processed 0 | Reused 1 | Errors 0")).ToBeVisibleAsync();
+        await Expect(Page.GetByRole(AriaRole.Link, new() { Name = "Download ZIP" })).ToBeVisibleAsync();
+        await Expect(Page.GetByRole(AriaRole.Link, new() { Name = _fixture.DuplicateSkippedMediaId })).ToBeVisibleAsync();
+        await Expect(Page.GetByText($"Reused from job: {_fixture.CompletedJobId}")).ToBeVisibleAsync();
+
+        await Page.GetByRole(AriaRole.Link, new() { Name = _fixture.DuplicateSkippedMediaId }).ClickAsync();
+        await Expect(Page).ToHaveURLAsync(new Regex($".*/jobs/{_fixture.DuplicateSkippedJobId}/{_fixture.DuplicateSkippedMediaId}$"));
+        await Expect(Page.Locator("pre")).ToContainTextAsync("Video Timeline");
+        await Expect(Page.Locator("pre")).ToContainTextAsync("public test sample");
+    }
+
+    [TestMethod]
+    public async Task DuplicateSkippedRun_CanDownloadZip()
+    {
+        await Page.GotoAsync($"{_fixture.BaseUrl}/jobs/{_fixture.DuplicateSkippedJobId}");
+
+        var download = await Page.RunAndWaitForDownloadAsync(async () =>
+        {
+            await Page.GetByRole(AriaRole.Link, new() { Name = "Download ZIP" }).ClickAsync();
+        });
+
+        var zipPath = Path.Combine(_fixture.TempRoot, $"{_fixture.DuplicateSkippedJobId}.zip");
+        await download.SaveAsAsync(zipPath);
+
+        using var archive = ZipFile.OpenRead(zipPath);
+        Assert.IsTrue(archive.Entries.Any(entry => entry.FullName.StartsWith("timelines/", StringComparison.Ordinal)));
     }
 
     [TestMethod]
@@ -224,5 +299,49 @@ public sealed class DashboardSmokeTests : PageTest
 
         await Page.GotoAsync($"{_fixture.BaseUrl}/runs/{_fixture.CompletedJobId}/{_fixture.CompletedMediaId}");
         await Expect(Page).ToHaveURLAsync(new Regex($".*/jobs/{_fixture.CompletedJobId}/{_fixture.CompletedMediaId}$"));
+    }
+
+    [TestMethod]
+    public async Task CompletedRun_CanRerunWithOriginalSettings()
+    {
+        await Page.GotoAsync($"{_fixture.BaseUrl}/jobs/{_fixture.CompletedJobId}");
+
+        await Page.GetByRole(AriaRole.Button, new() { Name = "Run Again With Same Settings" }).ClickAsync();
+        await Expect(Page).ToHaveURLAsync(new Regex(".*/jobs/job-[^/]+$"));
+
+        var rerunJobId = new Uri(Page.Url).Segments[^1].Trim('/');
+        try
+        {
+            var request = await _fixture.ReadJobRequestSettingsAsync(rerunJobId);
+            Assert.AreEqual("cpu", request.ComputeMode);
+            Assert.AreEqual("standard", request.ProcessingQuality);
+            Assert.IsTrue(request.ReprocessDuplicates);
+        }
+        finally
+        {
+            await _fixture.DeleteRunAsync(rerunJobId);
+        }
+    }
+
+    [TestMethod]
+    public async Task CompletedRun_CanRerunWithCurrentSettings()
+    {
+        await Page.GotoAsync($"{_fixture.BaseUrl}/jobs/{_fixture.CompletedJobId}");
+
+        await Page.GetByRole(AriaRole.Button, new() { Name = "Run Again With Current Settings" }).ClickAsync();
+        await Expect(Page).ToHaveURLAsync(new Regex(".*/jobs/job-[^/]+$"));
+
+        var rerunJobId = new Uri(Page.Url).Segments[^1].Trim('/');
+        try
+        {
+            var request = await _fixture.ReadJobRequestSettingsAsync(rerunJobId);
+            Assert.AreEqual("gpu", request.ComputeMode);
+            Assert.AreEqual("high", request.ProcessingQuality);
+            Assert.IsTrue(request.ReprocessDuplicates);
+        }
+        finally
+        {
+            await _fixture.DeleteRunAsync(rerunJobId);
+        }
     }
 }

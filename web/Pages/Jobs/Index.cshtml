@@ -15,6 +15,11 @@
 
     string StageLabel(string? value)
     {
+        if (string.Equals(value, "skipped_duplicate", StringComparison.OrdinalIgnoreCase))
+        {
+            return L("details.reused");
+        }
+
         var key = $"stage.{(value ?? string.Empty).ToLowerInvariant()}";
         var label = L(key);
         return label == key ? value ?? "-" : label;
@@ -24,14 +29,22 @@
     string FormatDuration(double? valueSeconds) => DisplayFormatters.FormatDurationFriendly(valueSeconds, L);
     string FormatDurationOrDash(double? valueSeconds) => valueSeconds.HasValue ? FormatDuration(valueSeconds) : "-";
     string FormatCreatedAt(string? value) => DisplayFormatters.FormatCreatedAt(value);
-    double Percent(double raw, int done, int total)
+    int CompletedCount(int done, int skipped, int failed) => done + skipped + failed;
+
+    string ProgressCounter(int done, int skipped, int failed, int total) =>
+        $"{CompletedCount(done, skipped, failed)} / {total}";
+
+    string ProgressBreakdown(int done, int skipped, int failed) =>
+        $"{L("details.processed")} {done} | {L("details.reused")} {skipped} | {L("details.errors")} {failed}";
+
+    double Percent(double raw, int completed, int total)
     {
         if (raw > 0)
         {
             return Math.Clamp(raw, 0, 100);
         }
 
-        return total <= 0 ? 0 : Math.Round(done * 100.0 / total, 1);
+        return total <= 0 ? 0 : Math.Round(completed * 100.0 / total, 1);
     }
 
     string PercentLabel(double value) => $"{Math.Round(value, 1):0.0}%";
@@ -65,7 +78,10 @@
 
     @if (Model.ActiveRun is not null)
     {
-        var activePercent = Percent(Model.ActiveRun.ProgressPercent, Model.ActiveRun.VideosDone, Model.ActiveRun.VideosTotal);
+        var activePercent = Percent(
+            Model.ActiveRun.ProgressPercent,
+            CompletedCount(Model.ActiveRun.VideosDone, Model.ActiveRun.VideosSkipped, Model.ActiveRun.VideosFailed),
+            Model.ActiveRun.VideosTotal);
         <section class="panel">
             <div class="mb-4 flex items-center justify-between gap-3">
                 <div>
@@ -86,7 +102,8 @@
                 <div class="metric-card">
                     <div class="metric-label">@L("common.progress")</div>
                     <div class="metric-value">@PercentLabel(activePercent)</div>
-                    <div class="metric-subtle">@Model.ActiveRun.VideosDone / @Model.ActiveRun.VideosTotal</div>
+                    <div class="metric-subtle">@ProgressCounter(Model.ActiveRun.VideosDone, Model.ActiveRun.VideosSkipped, Model.ActiveRun.VideosFailed, Model.ActiveRun.VideosTotal)</div>
+                    <div class="metric-subtle">@ProgressBreakdown(Model.ActiveRun.VideosDone, Model.ActiveRun.VideosSkipped, Model.ActiveRun.VideosFailed)</div>
                     <div class="progress-track mt-3">
                         <div class="progress-fill" style="width:@(activePercent.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture))%"></div>
                     </div>
@@ -160,7 +177,10 @@
                     {
                         @foreach (var run in Model.RecentRuns)
                         {
-                            var percent = Percent(run.ProgressPercent, run.VideosDone, run.VideosTotal);
+                            var percent = Percent(
+                                run.ProgressPercent,
+                                CompletedCount(run.VideosDone, run.VideosSkipped, run.VideosFailed),
+                                run.VideosTotal);
                             <tr>
                                 <td>
                                     <a class="table-link" href="@JobUrls.Details(run.JobId)">@run.JobId</a>
@@ -177,7 +197,8 @@
                                 </td>
                                 <td>
                                     <div class="font-medium text-slate-900">@PercentLabel(percent)</div>
-                                    <div class="mt-1 text-xs text-slate-500">@run.VideosDone / @run.VideosTotal</div>
+                                    <div class="mt-1 text-xs text-slate-500">@ProgressCounter(run.VideosDone, run.VideosSkipped, run.VideosFailed, run.VideosTotal)</div>
+                                    <div class="mt-1 text-xs text-slate-500">@ProgressBreakdown(run.VideosDone, run.VideosSkipped, run.VideosFailed)</div>
                                     <div class="progress-track mt-2">
                                         <div class="progress-fill" style="width:@(percent.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture))%"></div>
                                     </div>

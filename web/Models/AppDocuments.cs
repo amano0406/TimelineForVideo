@@ -586,6 +586,9 @@ public sealed class TimelineMediaItem
     public string SourcePath { get; set; } = "";
     public string TimelinePath { get; set; } = "";
     public string Status { get; set; } = "pending";
+    public bool IsReferencedDuplicate { get; set; }
+    public string? ReferencedJobId { get; set; }
+    public string? ReferencedMediaId { get; set; }
 }
 
 public sealed class RunDetails
@@ -593,6 +596,8 @@ public sealed class RunDetails
     public string JobId { get; set; } = "";
     public string RunDirectory { get; set; } = "";
     public double? ElapsedWallSec { get; set; }
+    public JobRequestDocument? Request { get; set; }
+    public AppSettingsDocument? CurrentSettings { get; set; }
     public JobStatusDocument? Status { get; set; }
     public JobResultDocument? Result { get; set; }
     public ManifestDocument? Manifest { get; set; }

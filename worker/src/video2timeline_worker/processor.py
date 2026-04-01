@@ -58,6 +58,26 @@ def _request_path(job_dir: Path) -> Path:
     return job_dir / "request.json"
 
 
+def _resolve_duplicate_timeline_path(duplicate: dict[str, Any] | None) -> Path | None:
+    if not duplicate:
+        return None
+
+    timeline_path = duplicate.get("timeline_path")
+    if timeline_path:
+        candidate = Path(str(timeline_path))
+        if candidate.exists():
+            return candidate
+
+    run_dir = duplicate.get("run_dir")
+    media_id = duplicate.get("media_id")
+    if run_dir and media_id:
+        candidate = Path(str(run_dir)) / "media" / str(media_id) / "timeline" / "timeline.md"
+        if candidate.exists():
+            return candidate
+
+    return None
+
+
 def _load_request(job_dir: Path) -> JobRequest:
     return JobRequest.from_dict(read_json(_request_path(job_dir)))
 
@@ -522,15 +542,21 @@ def process_job(job_dir: Path | None = None) -> bool:
             duplicate = catalog.get(file_hash)
             duplicate_status = "new"
             duplicate_of = None
-            if duplicate:
+            duplicate_timeline_path = _resolve_duplicate_timeline_path(duplicate)
+            if duplicate_timeline_path is not None:
                 duplicate_of = str(
                     duplicate.get("media_id")
-                    or duplicate.get("timeline_path")
+                    or duplicate_timeline_path
                     or duplicate.get("run_dir")
                     or ""
                 )
                 duplicate_status = (
                     "duplicate_reprocess" if request.reprocess_duplicates else "duplicate_skip"
+                )
+            elif duplicate:
+                append_log(
+                    log_path,
+                    f"[{now_iso()}] Duplicate catalog entry is stale. Processing again: {input_item.original_path}",
                 )
 
             manifest_items.append(

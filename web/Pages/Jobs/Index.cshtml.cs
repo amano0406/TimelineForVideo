@@ -64,8 +64,9 @@ public sealed class IndexModel(
     {
         var runs = await runStore.ListRunsAsync(cancellationToken);
         ActiveRun = runs.FirstOrDefault(static run =>
-            string.Equals(run.State, "pending", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(run.State, "running", StringComparison.OrdinalIgnoreCase));
+                       string.Equals(run.State, "running", StringComparison.OrdinalIgnoreCase))
+                   ?? runs.FirstOrDefault(static run =>
+                       string.Equals(run.State, "pending", StringComparison.OrdinalIgnoreCase));
 
         var totalCount = runs.Count;
         TotalPages = Math.Max(1, (int)Math.Ceiling(totalCount / (double)PageSize));

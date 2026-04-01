@@ -151,12 +151,14 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
     {
         var summaries = await ListRunsAsync(cancellationToken);
         return summaries.FirstOrDefault(static run =>
-            string.Equals(run.State, "pending", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(run.State, "running", StringComparison.OrdinalIgnoreCase));
+                   string.Equals(run.State, "running", StringComparison.OrdinalIgnoreCase))
+               ?? summaries.FirstOrDefault(static run =>
+                   string.Equals(run.State, "pending", StringComparison.OrdinalIgnoreCase));
     }
 
     public async Task<(string JobId, string RunDirectory)> CreateJobFromExistingAsync(
         string jobId,
+        bool useCurrentSettings,
         CancellationToken cancellationToken = default)
     {
         var settings = await settingsStore.LoadAsync(cancellationToken);
@@ -166,6 +168,14 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
             throw new InvalidOperationException("The selected job could not be found.");
         }
 
+        var existingStatus = await ReadJsonAsync<JobStatusDocument>(
+            Path.Combine(existingRunDirectory, "status.json"),
+            cancellationToken);
+        if (existingStatus is not null && IsActiveRunState(existingStatus.State))
+        {
+            throw new InvalidOperationException("Finish the current job before running it again.");
+        }
+
         var existingRequest = await ReadJsonAsync<JobRequestDocument>(
             Path.Combine(existingRunDirectory, "request.json"),
             cancellationToken);
@@ -173,6 +183,8 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
         {
             throw new InvalidOperationException("The selected job does not have a reusable request.");
         }
+
+        EnsureRerunnableInputs(existingRequest.InputItems);
 
         var outputRoot = settings.OutputRoots
             .FirstOrDefault(root => root.Enabled && string.Equals(root.Id, existingRequest.OutputRootId, StringComparison.OrdinalIgnoreCase))
@@ -186,10 +198,10 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
         return await CreateJobFromInputsAsync(
             outputRoot,
             existingRequest.InputItems.Select(CloneInputItem).ToList(),
-            existingRequest.ReprocessDuplicates,
+            reprocessDuplicates: true,
             hasToken,
-            existingRequest.ComputeMode,
-            existingRequest.ProcessingQuality,
+            useCurrentSettings ? settings.ComputeMode : existingRequest.ComputeMode,
+            useCurrentSettings ? settings.ProcessingQuality : existingRequest.ProcessingQuality,
             cancellationToken);
     }
 
@@ -362,6 +374,7 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
         {
             throw new InvalidOperationException("The job is still in progress.");
         }
+        var request = await ReadJsonAsync<JobRequestDocument>(Path.Combine(runDirectory, "request.json"), cancellationToken);
         var result = await ReadJsonAsync<JobResultDocument>(Path.Combine(runDirectory, "result.json"), cancellationToken);
         var manifest = await ReadJsonAsync<ManifestDocument>(Path.Combine(runDirectory, "manifest.json"), cancellationToken);
 
@@ -378,7 +391,7 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
         try
         {
             await Task.Run(
-                () => BuildExportPackage(runDirectory, jobId, stagingRoot, status, result, manifest),
+                () => BuildExportPackage(runDirectory, jobId, stagingRoot, request, status, result, manifest),
                 cancellationToken);
             await Task.Run(
                 () => ZipFile.CreateFromDirectory(stagingRoot, destination, CompressionLevel.Fastest, includeBaseDirectory: false),
@@ -424,22 +437,15 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
             Manifest = await ReadJsonAsync<ManifestDocument>(Path.Combine(runDirectory, "manifest.json"), cancellationToken),
             LogTail = await ReadLogTailAsync(Path.Combine(runDirectory, "logs", "worker.log"), cancellationToken),
         };
+        var request = await ReadJsonAsync<JobRequestDocument>(Path.Combine(runDirectory, "request.json"), cancellationToken);
+        details.Request = request;
+        details.CurrentSettings = await settingsStore.LoadAsync(cancellationToken);
         details.ElapsedWallSec = DisplayFormatters.CalculateElapsedSeconds(
             details.Status?.StartedAt,
             details.Status?.CompletedAt,
             details.Status?.UpdatedAt);
 
-        details.TimelineItems = details.Manifest?.Items
-            .Where(static item => !string.IsNullOrWhiteSpace(item.MediaId))
-            .Select(item => new TimelineMediaItem
-            {
-                MediaId = item.MediaId!,
-                SourcePath = item.OriginalPath,
-                TimelinePath = Path.Combine(runDirectory, "media", item.MediaId!, "timeline", "timeline.md"),
-                Status = item.Status,
-            })
-            .Where(static item => File.Exists(item.TimelinePath))
-            .ToList() ?? [];
+        details.TimelineItems = ResolveTimelineItems(runDirectory, request, details.Manifest);
 
         return details;
     }
@@ -452,13 +458,16 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
             return null;
         }
 
-        var timelinePath = Path.Combine(runDirectory, "media", mediaId, "timeline", "timeline.md");
-        if (!File.Exists(timelinePath))
+        var request = await ReadJsonAsync<JobRequestDocument>(Path.Combine(runDirectory, "request.json"), cancellationToken);
+        var manifest = await ReadJsonAsync<ManifestDocument>(Path.Combine(runDirectory, "manifest.json"), cancellationToken);
+        var timelineItem = ResolveTimelineItems(runDirectory, request, manifest)
+            .FirstOrDefault(item => string.Equals(item.MediaId, mediaId, StringComparison.OrdinalIgnoreCase));
+        if (timelineItem is null || !File.Exists(timelineItem.TimelinePath))
         {
             return null;
         }
 
-        return await File.ReadAllTextAsync(timelinePath, cancellationToken);
+        return await File.ReadAllTextAsync(timelineItem.TimelinePath, cancellationToken);
     }
 
     public async Task<IReadOnlyList<RunSummary>> ListRunsAsync(CancellationToken cancellationToken = default)
@@ -485,9 +494,7 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
                 var manifest = await ReadJsonAsync<ManifestDocument>(Path.Combine(runDirectory, "manifest.json"), cancellationToken);
                 var totalSizeBytes = manifest?.Items.Sum(static item => item.SizeBytes) ?? 0L;
                 var totalDurationSec = manifest?.Items.Sum(static item => item.DurationSeconds) ?? 0.0;
-                var hasDownloadableArchive = manifest?.Items.Any(item =>
-                    !string.IsNullOrWhiteSpace(item.MediaId) &&
-                    File.Exists(Path.Combine(runDirectory, "media", item.MediaId!, "timeline", "timeline.md"))) ?? false;
+                var hasDownloadableArchive = ResolveTimelineItems(runDirectory, request, manifest).Count > 0;
 
                 summaries.Add(new RunSummary
                 {
@@ -666,25 +673,31 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
                 continue;
             }
 
+            var reusableTimelinePath = ResolveCatalogTimelinePath(catalogRow);
+            if (string.IsNullOrWhiteSpace(reusableTimelinePath))
+            {
+                continue;
+            }
+
             duplicates.Add(new DuplicatePreviewItem
             {
                 ReferenceId = file.ReferenceId,
                 DisplayName = file.OriginalName,
-                ExistingJobId = GetOptionalString(catalogRow, "job_id"),
-                ExistingMediaId = GetOptionalString(catalogRow, "media_id"),
-                TimelinePath = GetOptionalString(catalogRow, "timeline_path"),
+                ExistingJobId = catalogRow.JobId,
+                ExistingMediaId = catalogRow.MediaId,
+                TimelinePath = reusableTimelinePath,
             });
         }
 
         return duplicates;
     }
 
-    private static async Task<Dictionary<string, JsonElement>> LoadCatalogIndexAsync(
+    private static async Task<Dictionary<string, CatalogRow>> LoadCatalogIndexAsync(
         string outputRootPath,
         CancellationToken cancellationToken)
     {
         var path = Path.Combine(outputRootPath, ".video2timeline", "catalog.jsonl");
-        var rows = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
+        var rows = new Dictionary<string, CatalogRow>(StringComparer.OrdinalIgnoreCase);
         if (!File.Exists(path))
         {
             return rows;
@@ -700,18 +713,13 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
             }
 
             using var document = JsonDocument.Parse(line);
-            if (!document.RootElement.TryGetProperty("sha256", out var shaElement))
+            var row = ParseCatalogRow(document.RootElement);
+            if (string.IsNullOrWhiteSpace(row.Sha256))
             {
                 continue;
             }
 
-            var sha256 = shaElement.GetString();
-            if (string.IsNullOrWhiteSpace(sha256))
-            {
-                continue;
-            }
-
-            rows[sha256] = document.RootElement.Clone();
+            rows[row.Sha256] = row;
         }
 
         return rows;
@@ -722,6 +730,164 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
         await using var stream = File.OpenRead(path);
         var hash = await SHA256.HashDataAsync(stream, cancellationToken);
         return Convert.ToHexString(hash).ToLowerInvariant();
+    }
+
+    private static List<TimelineMediaItem> ResolveTimelineItems(
+        string runDirectory,
+        JobRequestDocument? request,
+        ManifestDocument? manifest)
+    {
+        var catalogIndex = LoadCatalogIndex(request?.OutputRootPath);
+        var timelineItems = new List<TimelineMediaItem>();
+        foreach (var item in manifest?.Items?.Where(static item => !string.IsNullOrWhiteSpace(item.MediaId)) ?? [])
+        {
+            var mediaId = item.MediaId!;
+            var currentTimelinePath = Path.Combine(runDirectory, "media", mediaId, "timeline", "timeline.md");
+            var timelinePath = File.Exists(currentTimelinePath) ? currentTimelinePath : null;
+            string? referencedJobId = null;
+            string? referencedMediaId = null;
+
+            if (timelinePath is null &&
+                string.Equals(item.DuplicateStatus, "duplicate_skip", StringComparison.OrdinalIgnoreCase))
+            {
+                if (catalogIndex.TryGetValue(item.Sha256, out var catalogRow) &&
+                    !string.IsNullOrWhiteSpace(ResolveCatalogTimelinePath(catalogRow)))
+                {
+                    timelinePath = ResolveCatalogTimelinePath(catalogRow);
+                    referencedJobId = catalogRow.JobId;
+                    referencedMediaId = catalogRow.MediaId;
+                }
+                else if (!string.IsNullOrWhiteSpace(item.DuplicateOf) && File.Exists(item.DuplicateOf))
+                {
+                    timelinePath = item.DuplicateOf;
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(timelinePath) || !File.Exists(timelinePath))
+            {
+                continue;
+            }
+
+            timelineItems.Add(new TimelineMediaItem
+            {
+                MediaId = mediaId,
+                SourcePath = item.OriginalPath,
+                TimelinePath = timelinePath,
+                Status = item.Status,
+                IsReferencedDuplicate = !string.Equals(timelinePath, currentTimelinePath, StringComparison.OrdinalIgnoreCase),
+                ReferencedJobId = referencedJobId,
+                ReferencedMediaId = referencedMediaId,
+            });
+        }
+
+        if (timelineItems.Count > 0 || manifest?.Items.Count > 0)
+        {
+            return timelineItems;
+        }
+
+        var mediaRoot = Path.Combine(runDirectory, "media");
+        if (!Directory.Exists(mediaRoot))
+        {
+            return timelineItems;
+        }
+
+        foreach (var mediaDirectory in Directory.EnumerateDirectories(mediaRoot).OrderBy(static value => value, StringComparer.OrdinalIgnoreCase))
+        {
+            var mediaId = Path.GetFileName(mediaDirectory);
+            var timelinePath = Path.Combine(mediaDirectory, "timeline", "timeline.md");
+            if (!File.Exists(timelinePath))
+            {
+                continue;
+            }
+
+            SourceInfoExportDocument? sourceInfo = null;
+            var sourceInfoPath = Path.Combine(mediaDirectory, "source.json");
+            if (File.Exists(sourceInfoPath))
+            {
+                try
+                {
+                    sourceInfo = JsonSerializer.Deserialize<SourceInfoExportDocument>(File.ReadAllText(sourceInfoPath));
+                }
+                catch
+                {
+                    sourceInfo = null;
+                }
+            }
+
+            timelineItems.Add(new TimelineMediaItem
+            {
+                MediaId = mediaId,
+                SourcePath = sourceInfo?.OriginalPath ?? mediaId,
+                TimelinePath = timelinePath,
+                Status = "completed",
+            });
+        }
+
+        return timelineItems;
+    }
+
+    private static Dictionary<string, CatalogRow> LoadCatalogIndex(string? outputRootPath)
+    {
+        var rows = new Dictionary<string, CatalogRow>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(outputRootPath))
+        {
+            return rows;
+        }
+
+        var path = Path.Combine(outputRootPath, ".video2timeline", "catalog.jsonl");
+        if (!File.Exists(path))
+        {
+            return rows;
+        }
+
+        foreach (var line in File.ReadLines(path))
+        {
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                continue;
+            }
+
+            using var document = JsonDocument.Parse(line);
+            var row = ParseCatalogRow(document.RootElement);
+            if (string.IsNullOrWhiteSpace(row.Sha256))
+            {
+                continue;
+            }
+
+            rows[row.Sha256] = row;
+        }
+
+        return rows;
+    }
+
+    private static CatalogRow ParseCatalogRow(JsonElement payload) =>
+        new()
+        {
+            Sha256 = GetOptionalString(payload, "sha256") ?? "",
+            JobId = GetOptionalString(payload, "job_id"),
+            MediaId = GetOptionalString(payload, "media_id"),
+            RunDirectory = GetOptionalString(payload, "run_dir"),
+            TimelinePath = GetOptionalString(payload, "timeline_path"),
+            OriginalPath = GetOptionalString(payload, "original_path"),
+        };
+
+    private static string? ResolveCatalogTimelinePath(CatalogRow row)
+    {
+        if (!string.IsNullOrWhiteSpace(row.TimelinePath) && File.Exists(row.TimelinePath))
+        {
+            return row.TimelinePath;
+        }
+
+        if (!string.IsNullOrWhiteSpace(row.RunDirectory) && !string.IsNullOrWhiteSpace(row.MediaId))
+        {
+            var candidate = Path.Combine(row.RunDirectory, "media", row.MediaId, "timeline", "timeline.md");
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return null;
     }
 
     private static string? GetOptionalString(JsonElement payload, string propertyName)
@@ -858,6 +1024,39 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
             UploadedPath = source.UploadedPath,
         };
 
+    private static void EnsureRerunnableInputs(IReadOnlyList<InputItemDocument> inputItems)
+    {
+        var missing = inputItems
+            .Select(item => new
+            {
+                item.DisplayName,
+                ResolvedPath = ResolveRerunInputPath(item),
+            })
+            .Where(static row => !string.IsNullOrWhiteSpace(row.ResolvedPath) && !File.Exists(row.ResolvedPath))
+            .Select(static row => row.DisplayName)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(3)
+            .ToList();
+
+        if (missing.Count == 0)
+        {
+            return;
+        }
+
+        throw new InvalidOperationException(
+            $"Some source files are no longer available for rerun: {string.Join(", ", missing)}");
+    }
+
+    private static string? ResolveRerunInputPath(InputItemDocument item)
+    {
+        if (!string.IsNullOrWhiteSpace(item.UploadedPath))
+        {
+            return item.UploadedPath;
+        }
+
+        return Path.IsPathRooted(item.OriginalPath) ? item.OriginalPath : null;
+    }
+
     private static bool IsSubdirectoryOf(string candidate, string root)
     {
         if (string.Equals(candidate, root, StringComparison.OrdinalIgnoreCase))
@@ -878,6 +1077,7 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
         string runDirectory,
         string jobId,
         string exportRoot,
+        JobRequestDocument? request,
         JobStatusDocument? status,
         JobResultDocument? result,
         ManifestDocument? manifest)
@@ -885,41 +1085,7 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
         Directory.CreateDirectory(exportRoot);
         var timelinesRoot = Path.Combine(exportRoot, "timelines");
         Directory.CreateDirectory(timelinesRoot);
-        var timelineRows = new List<(string MediaId, string Label, string TimelinePath, string SourcePath)>();
-        var mediaRoot = Path.Combine(runDirectory, "media");
-
-        if (Directory.Exists(mediaRoot))
-        {
-            foreach (var mediaDirectory in Directory.EnumerateDirectories(mediaRoot).OrderBy(static value => value, StringComparer.OrdinalIgnoreCase))
-            {
-                var mediaId = Path.GetFileName(mediaDirectory);
-                var timelinePath = Path.Combine(mediaDirectory, "timeline", "timeline.md");
-                if (!File.Exists(timelinePath))
-                {
-                    continue;
-                }
-
-                SourceInfoExportDocument? sourceInfo = null;
-                var sourcePath = Path.Combine(mediaDirectory, "source.json");
-                if (File.Exists(sourcePath))
-                {
-                    try
-                    {
-                        sourceInfo = JsonSerializer.Deserialize<SourceInfoExportDocument>(File.ReadAllText(sourcePath));
-                    }
-                    catch
-                    {
-                        sourceInfo = null;
-                    }
-                }
-
-                timelineRows.Add((
-                    mediaId,
-                    BestExportLabel(mediaId, sourceInfo),
-                    timelinePath,
-                    sourceInfo?.OriginalPath ?? string.Empty));
-            }
-        }
+        var timelineRows = ResolveExportTimelineRows(runDirectory, request, manifest);
 
         timelineRows = timelineRows
             .OrderBy(static row => row.Label, StringComparer.OrdinalIgnoreCase)
@@ -962,6 +1128,44 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
             var fileName = EnsureUniqueExportFileName($"{row.Label}.md", usedNames);
             File.Copy(row.TimelinePath, Path.Combine(timelinesRoot, fileName), overwrite: true);
         }
+    }
+
+    private static List<(string MediaId, string Label, string TimelinePath, string SourcePath)> ResolveExportTimelineRows(
+        string runDirectory,
+        JobRequestDocument? request,
+        ManifestDocument? manifest)
+    {
+        var resolvedItems = ResolveTimelineItems(runDirectory, request, manifest);
+        if (resolvedItems.Count == 0)
+        {
+            return [];
+        }
+
+        var timelineRows = new List<(string MediaId, string Label, string TimelinePath, string SourcePath)>();
+        foreach (var item in resolvedItems)
+        {
+            SourceInfoExportDocument? sourceInfo = null;
+            var sourceInfoPath = ResolveSourceInfoPath(item.TimelinePath);
+            if (sourceInfoPath is not null && File.Exists(sourceInfoPath))
+            {
+                try
+                {
+                    sourceInfo = JsonSerializer.Deserialize<SourceInfoExportDocument>(File.ReadAllText(sourceInfoPath));
+                }
+                catch
+                {
+                    sourceInfo = null;
+                }
+            }
+
+            timelineRows.Add((
+                item.MediaId,
+                BestExportLabel(item.MediaId, sourceInfo, item.SourcePath),
+                item.TimelinePath,
+                item.SourcePath));
+        }
+
+        return timelineRows;
     }
 
     private static bool WriteFailureArtifacts(
@@ -1071,13 +1275,14 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
         return true;
     }
 
-    private static string BestExportLabel(string mediaId, SourceInfoExportDocument? sourceInfo)
+    private static string BestExportLabel(string mediaId, SourceInfoExportDocument? sourceInfo, string? fallbackOriginalPath = null)
     {
         var candidates = new[]
         {
             sourceInfo?.CapturedAt,
             sourceInfo?.DisplayName,
             sourceInfo?.OriginalPath,
+            fallbackOriginalPath,
             mediaId,
         };
 
@@ -1100,6 +1305,15 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
         }
 
         return MakeSafeFileName(mediaId);
+    }
+
+    private static string? ResolveSourceInfoPath(string timelinePath)
+    {
+        var timelineDirectory = Path.GetDirectoryName(timelinePath);
+        var mediaDirectory = timelineDirectory is null ? null : Path.GetDirectoryName(timelineDirectory);
+        return string.IsNullOrWhiteSpace(mediaDirectory)
+            ? null
+            : Path.Combine(mediaDirectory, "source.json");
     }
 
     private static string EnsureUniqueExportFileName(string fileName, HashSet<string> usedNames)
@@ -1159,5 +1373,20 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
         public string? DisplayName { get; set; }
 
         public string? CapturedAt { get; set; }
+    }
+
+    private sealed class CatalogRow
+    {
+        public string Sha256 { get; set; } = "";
+
+        public string? JobId { get; set; }
+
+        public string? MediaId { get; set; }
+
+        public string? RunDirectory { get; set; }
+
+        public string? TimelinePath { get; set; }
+
+        public string? OriginalPath { get; set; }
     }
 }
