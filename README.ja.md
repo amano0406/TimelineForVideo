@@ -283,4 +283,4 @@ git config core.hooksPath .githooks
 
 ## ライセンス
 
-このリポジトリは MIT License です。詳細は [LICENSE](LICENSE) を参照してください.
+このリポジトリは MIT License です。詳細は [LICENSE](LICENSE) を参照してください。
