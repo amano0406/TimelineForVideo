@@ -6,7 +6,7 @@
 
 ## Public Release Status
 
-現在の public release 系列は `TimelineForVideo v0.3.3 Tech Preview` です。
+現在の public release 系列は `TimelineForVideo v0.4.0 Tech Preview` です。
 
 現時点の public contract:
 

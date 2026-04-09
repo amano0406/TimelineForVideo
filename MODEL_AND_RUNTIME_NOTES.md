@@ -4,7 +4,7 @@ This document explains what `TimelineForVideo` downloads or expects at runtime a
 
 ## Public Release Contract
 
-The current public release line is `TimelineForVideo v0.3.3 Tech Preview`.
+The current public release line is `TimelineForVideo v0.4.0 Tech Preview`.
 
 - baseline support is Windows + Docker Desktop + CPU mode
 - macOS is an experimental source-based path

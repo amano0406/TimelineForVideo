@@ -42,7 +42,7 @@ Use this checklist before switching the repository from private to public.
 
 ## Release Package
 
-- `scripts/build-release-bundle.ps1 -Version 0.3.x` produces `TimelineForVideo-windows-local.zip`
+- `scripts/build-release-bundle.ps1 -Version 0.x.y` produces `TimelineForVideo-windows-local.zip`
 - `SHA256SUMS.txt` is generated for the release bundle
 - the bundle top folder is `TimelineForVideo-v0.x.y`
 - the bundle does not include generated runs, uploads, app-data, tests, or local caches

@@ -6,7 +6,7 @@ Turn video files you already have into timeline markdown packages that are easie
 
 ## Public Release Status
 
-The current public release line is `TimelineForVideo v0.3.3 Tech Preview`.
+The current public release line is `TimelineForVideo v0.4.0 Tech Preview`.
 
 Current public contract:
 
