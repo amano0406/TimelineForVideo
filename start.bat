@@ -3,6 +3,8 @@ setlocal EnableExtensions EnableDelayedExpansion
 
 cd /d "%~dp0"
 set "DOCKER_DESKTOP_URL=https://docs.docker.com/desktop/setup/install/windows-install/"
+set "COMPOSE_PROJECT_NAME=timelineforvideo"
+set "LEGACY_COMPOSE_PROJECT_NAME=video2timeline"
 set "SKIP_HELP_LINK=%TIMELINEFORVIDEO_SKIP_HELP_LINK%"
 if not defined SKIP_HELP_LINK set "SKIP_HELP_LINK=%VIDEO2TIMELINE_SKIP_HELP_LINK%"
 set "SKIP_BROWSER_OPEN=%TIMELINEFORVIDEO_SKIP_BROWSER_OPEN%"
@@ -28,6 +30,15 @@ if errorlevel 1 (
   exit /b 1
 )
 
+docker volume inspect "%LEGACY_COMPOSE_PROJECT_NAME%_app-data" >nul 2>&1
+if not errorlevel 1 (
+  docker volume inspect "%COMPOSE_PROJECT_NAME%_app-data" >nul 2>&1
+  if errorlevel 1 (
+    set "COMPOSE_PROJECT_NAME=%LEGACY_COMPOSE_PROJECT_NAME%"
+    echo Found existing video2timeline Docker data. Reusing it for TimelineForVideo.
+  )
+)
+
 if not exist ".env" (
   copy ".env.example" ".env" >nul
   echo Created .env from .env.example.
@@ -39,6 +50,7 @@ for /f "usebackq tokens=1,* delims==" %%A in (".env") do (
   if /I "%%A"=="TIMELINEFORVIDEO_WEB_PORT" set "WEB_PORT=%%B"
   if /I "%%A"=="VIDEO2TIMELINE_WEB_PORT" if not defined WEB_PORT set "WEB_PORT=%%B"
 )
+set "TIMELINEFORVIDEO_WEB_PORT=%WEB_PORT%"
 
 echo Starting web and worker containers...
 set "COMPOSE_GPU_FILE="

@@ -4,11 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 COMPOSE_PROJECT="timelineforvideo"
-APPDATA_VOLUME="${COMPOSE_PROJECT}_app-data"
-OUTPUTS_VOLUME="${COMPOSE_PROJECT}_outputs"
-UPLOADS_VOLUME="${COMPOSE_PROJECT}_uploads"
-HF_CACHE_VOLUME="${COMPOSE_PROJECT}_hf-cache"
-TORCH_CACHE_VOLUME="${COMPOSE_PROJECT}_torch-cache"
+LEGACY_COMPOSE_PROJECT="video2timeline"
 
 if ! command -v docker >/dev/null 2>&1; then
   echo "Docker Desktop is not installed or docker is not on PATH."
@@ -20,6 +16,18 @@ if ! docker info >/dev/null 2>&1; then
   echo "Start Docker Desktop and wait until the engine is running, then try again."
   exit 1
 fi
+
+if docker volume inspect "${LEGACY_COMPOSE_PROJECT}_app-data" >/dev/null 2>&1; then
+  if ! docker volume inspect "${COMPOSE_PROJECT}_app-data" >/dev/null 2>&1; then
+    COMPOSE_PROJECT="${LEGACY_COMPOSE_PROJECT}"
+  fi
+fi
+
+APPDATA_VOLUME="${COMPOSE_PROJECT}_app-data"
+OUTPUTS_VOLUME="${COMPOSE_PROJECT}_outputs"
+UPLOADS_VOLUME="${COMPOSE_PROJECT}_uploads"
+HF_CACHE_VOLUME="${COMPOSE_PROJECT}_hf-cache"
+TORCH_CACHE_VOLUME="${COMPOSE_PROJECT}_torch-cache"
 
 echo
 echo "TimelineForVideo uninstall"

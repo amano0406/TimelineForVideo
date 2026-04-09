@@ -3,6 +3,8 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 DOCKER_DESKTOP_URL="https://docs.docker.com/desktop/setup/install/mac-install/"
+export COMPOSE_PROJECT_NAME="timelineforvideo"
+LEGACY_COMPOSE_PROJECT_NAME="video2timeline"
 SKIP_HELP_LINK="${TIMELINEFORVIDEO_SKIP_HELP_LINK:-${VIDEO2TIMELINE_SKIP_HELP_LINK:-0}}"
 SKIP_BROWSER_OPEN="${TIMELINEFORVIDEO_SKIP_BROWSER_OPEN:-${VIDEO2TIMELINE_SKIP_BROWSER_OPEN:-0}}"
 
@@ -26,6 +28,13 @@ if ! docker info >/dev/null 2>&1; then
   fi
   echo "Start Docker Desktop and wait until the engine is running, then try again."
   exit 1
+fi
+
+if docker volume inspect "${LEGACY_COMPOSE_PROJECT_NAME}_app-data" >/dev/null 2>&1; then
+  if ! docker volume inspect "${COMPOSE_PROJECT_NAME}_app-data" >/dev/null 2>&1; then
+    export COMPOSE_PROJECT_NAME="${LEGACY_COMPOSE_PROJECT_NAME}"
+    echo "Found existing video2timeline Docker data. Reusing it for TimelineForVideo."
+  fi
 fi
 
 if [ ! -f ".env" ]; then
@@ -54,6 +63,7 @@ fi
 if [ -z "${WEB_PORT}" ]; then
   WEB_PORT="38090"
 fi
+export TIMELINEFORVIDEO_WEB_PORT="${WEB_PORT}"
 
 APP_URL="http://localhost:${WEB_PORT}"
 APP_WINDOW_SIZE="960,640"

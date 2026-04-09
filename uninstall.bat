@@ -4,11 +4,7 @@ setlocal EnableExtensions EnableDelayedExpansion
 cd /d "%~dp0"
 
 set "COMPOSE_PROJECT=timelineforvideo"
-set "APPDATA_VOLUME=%COMPOSE_PROJECT%_app-data"
-set "OUTPUTS_VOLUME=%COMPOSE_PROJECT%_outputs"
-set "UPLOADS_VOLUME=%COMPOSE_PROJECT%_uploads"
-set "HF_CACHE_VOLUME=%COMPOSE_PROJECT%_hf-cache"
-set "TORCH_CACHE_VOLUME=%COMPOSE_PROJECT%_torch-cache"
+set "LEGACY_COMPOSE_PROJECT=video2timeline"
 
 where docker >nul 2>&1
 if errorlevel 1 (
@@ -23,6 +19,17 @@ if errorlevel 1 (
   echo Start Docker Desktop and wait until the engine is running, then try again.
   exit /b 1
 )
+
+docker volume inspect "%LEGACY_COMPOSE_PROJECT%_app-data" >nul 2>&1
+if not errorlevel 1 (
+  docker volume inspect "%COMPOSE_PROJECT%_app-data" >nul 2>&1
+  if errorlevel 1 set "COMPOSE_PROJECT=%LEGACY_COMPOSE_PROJECT%"
+)
+set "APPDATA_VOLUME=%COMPOSE_PROJECT%_app-data"
+set "OUTPUTS_VOLUME=%COMPOSE_PROJECT%_outputs"
+set "UPLOADS_VOLUME=%COMPOSE_PROJECT%_uploads"
+set "HF_CACHE_VOLUME=%COMPOSE_PROJECT%_hf-cache"
+set "TORCH_CACHE_VOLUME=%COMPOSE_PROJECT%_torch-cache"
 
 echo.
 echo TimelineForVideo uninstall
