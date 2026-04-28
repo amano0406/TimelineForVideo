@@ -2,7 +2,7 @@
 
 ## 1. Request Creation
 
-The web app writes `request.json` into a new `run-*` directory under the selected output root.
+The CLI writes `request.json` into a new `job-*` directory under the configured output root.
 
 The request contains:
 
@@ -14,7 +14,8 @@ The request contains:
 
 ## 2. Worker Pickup
 
-The Python worker daemon scans enabled output roots for `run-*` directories whose `status.json` is still `pending`.
+The Python worker processes a specific job directly through `jobs create` or `jobs run`.
+The daemon command is still available for advanced queue-style use.
 
 ## 3. Preflight
 

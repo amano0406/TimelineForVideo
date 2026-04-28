@@ -12,7 +12,7 @@ class ContractsTests(unittest.TestCase):
             job_id="run-123",
             created_at="2026-03-23T18:00:00+09:00",
             output_root_id="default",
-            output_root_path="/shared/outputs/default",
+            output_root_path="/data/output",
             profile="quality-first",
             compute_mode="gpu",
             processing_quality="high",
@@ -23,7 +23,7 @@ class ContractsTests(unittest.TestCase):
                     input_id="scan-0001",
                     source_kind="mounted_root",
                     source_id="primary",
-                    original_path="/shared/inputs/primary/example.mp4",
+                    original_path="/data/input/example.mp4",
                     display_name="example.mp4",
                     size_bytes=1234,
                 )

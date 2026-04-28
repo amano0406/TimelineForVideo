@@ -18,15 +18,13 @@ def _read_env(primary_key: str, legacy_key: str, default: str) -> str:
 
 def appdata_root() -> Path:
     return Path(
-        _read_env(
-            "TIMELINEFORVIDEO_APPDATA_ROOT", "VIDEO2TIMELINE_APPDATA_ROOT", "/shared/app-data"
-        )
+        _read_env("TIMELINEFORVIDEO_APPDATA_ROOT", "VIDEO2TIMELINE_APPDATA_ROOT", "/data/app-data")
     )
 
 
 def uploads_root() -> Path:
     return Path(
-        _read_env("TIMELINEFORVIDEO_UPLOADS_ROOT", "VIDEO2TIMELINE_UPLOADS_ROOT", "/shared/uploads")
+        _read_env("TIMELINEFORVIDEO_UPLOADS_ROOT", "VIDEO2TIMELINE_UPLOADS_ROOT", "/data/input")
     )
 
 
@@ -35,7 +33,7 @@ def outputs_root() -> Path:
         _read_env(
             "TIMELINEFORVIDEO_OUTPUTS_ROOT",
             "VIDEO2TIMELINE_OUTPUTS_ROOT",
-            str(appdata_root() / "outputs"),
+            "/data/output",
         )
     )
 
@@ -86,8 +84,8 @@ def load_settings() -> dict[str, Any]:
         }
     payload["inputRoots"] = [
         {
-            "id": "uploads",
-            "displayName": "Uploads",
+            "id": "input",
+            "displayName": "Input",
             "path": str(uploads_root()),
             "enabled": True,
         }

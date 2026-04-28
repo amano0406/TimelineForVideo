@@ -1,6 +1,6 @@
 # Security And Safety Notes
 
-`TimelineForVideo` is a local-first desktop-style tool packaged through Docker. It is not a multi-tenant hosted service and it does not attempt to sandbox the host machine.
+`TimelineForVideo` is a local-first CLI tool packaged through Docker. It is not a multi-tenant hosted service and it does not attempt to sandbox the host machine.
 
 That changes what matters most for safety.
 
@@ -10,16 +10,14 @@ The primary concern is not remote attack surface. The primary concern is whether
 
 Current guardrails:
 
-- uploaded files are stored under the configured uploads root
-- uploaded-file cleanup deletes only directories under that uploads root
-- completed run deletion removes only the selected run directory
-- output ZIPs are generated under the app-data downloads directory
-- Hugging Face tokens are stored outside the repository in app-data
+- input videos are read from the fixed input root
+- generated jobs and ZIP packages are written under the fixed output root
+- cleanup scripts do not delete original input videos
+- Hugging Face tokens are stored under `data/app-data`, which is ignored by git
 
 ## What This App Does Not Claim
 
 - no OS-level sandbox
-- no privilege separation between web and worker beyond directory boundaries
 - no hardened secret manager
 - no guarantee against misuse if the user intentionally points the app at sensitive paths
 
@@ -39,7 +37,7 @@ Those are easier to manage than the risks of a hosted service.
 ## Recommended Ongoing Checks
 
 - keep sample configs generic
-- keep `.env` and run output ignored
+- keep `.env`, `data/`, and run output ignored
 - review delete paths whenever cleanup logic changes
-- keep E2E smoke coverage on setup, run details, and ZIP download
+- keep CLI smoke coverage on settings, job creation, and ZIP archive creation
 - avoid adding broad recursive delete behavior without explicit root checks

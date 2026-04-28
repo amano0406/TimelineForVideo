@@ -78,7 +78,6 @@ function Copy-ReleaseFiles {
     $exactFiles = @(
         ".dockerignore",
         ".env.example",
-        "Directory.Build.props",
         "LICENSE",
         "MODEL_AND_RUNTIME_NOTES.md",
         "README.md",
@@ -95,17 +94,14 @@ function Copy-ReleaseFiles {
         "worker/pyproject.toml",
         "worker/requirements-cpu.txt",
         "docs/PUBLIC_RELEASE_CHECKLIST.md",
-        "docs/SECURITY_AND_SAFETY.md",
-        "scripts/open-app-window.ps1"
+        "docs/SECURITY_AND_SAFETY.md"
     )
 
     $directories = @(
         "configs",
         "docker",
-        "web",
         "worker/src",
-        "docs/examples",
-        "docs/screenshots"
+        "docs/examples"
     )
 
     foreach ($relativePath in $exactFiles) {

@@ -11,6 +11,7 @@ This document defines the first public GitHub Release line for `TimelineForVideo
   - Windows primary
   - macOS experimental
   - Docker Desktop required
+  - CLI primary
   - CPU baseline
   - GPU optional and best-effort
 
@@ -34,8 +35,9 @@ Do not attach:
 
 - Docker images
 - model caches
-- generated runs or uploads
+- generated runs, input files, or old upload data
 - `app-data`
+- Web UI files
 - tests
 - private screenshots or reports
 

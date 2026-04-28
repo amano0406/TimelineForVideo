@@ -3,9 +3,6 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-COMPOSE_PROJECT="timelineforvideo"
-LEGACY_COMPOSE_PROJECT="video2timeline"
-
 if ! command -v docker >/dev/null 2>&1; then
   echo "Docker Desktop is not installed or docker is not on PATH."
   exit 1
@@ -17,32 +14,11 @@ if ! docker info >/dev/null 2>&1; then
   exit 1
 fi
 
-if docker volume inspect "${LEGACY_COMPOSE_PROJECT}_app-data" >/dev/null 2>&1; then
-  if ! docker volume inspect "${COMPOSE_PROJECT}_app-data" >/dev/null 2>&1; then
-    COMPOSE_PROJECT="${LEGACY_COMPOSE_PROJECT}"
-  fi
-fi
-
-APPDATA_VOLUME="${COMPOSE_PROJECT}_app-data"
-OUTPUTS_VOLUME="${COMPOSE_PROJECT}_outputs"
-UPLOADS_VOLUME="${COMPOSE_PROJECT}_uploads"
-HF_CACHE_VOLUME="${COMPOSE_PROJECT}_hf-cache"
-TORCH_CACHE_VOLUME="${COMPOSE_PROJECT}_torch-cache"
-
 echo
 echo "TimelineForVideo uninstall"
 echo
-echo "This will remove:"
-echo "  - Docker containers for this project"
-echo "  - Docker images built for this project"
-echo "  - temporary Docker volumes for this project"
-echo "  - Docker network for this project"
-echo
-echo "Optional:"
-echo "  - delete saved app data volume (includes token and settings)"
-if [[ -f ".env" ]]; then
-  echo "  - delete local .env"
-fi
+echo "This will remove Docker containers and images built for this project."
+echo "It will not delete original videos under data/input."
 echo
 
 confirm_yes() {
@@ -67,40 +43,46 @@ fi
 echo
 echo "Stopping and removing Docker resources..."
 docker compose -f docker-compose.yml -f docker-compose.gpu.yml down --rmi local --remove-orphans </dev/null
+echo "Docker resources removed."
 
-remove_volume_if_exists() {
-  local volume_name="$1"
-  if docker volume ls --format '{{.Name}}' | grep -Fxq "${volume_name}"; then
-    docker volume rm "${volume_name}" >/dev/null
-    echo "Removed Docker volume: ${volume_name}"
+if [[ -d "data/output" ]]; then
+  echo
+  if confirm_yes "Delete generated outputs under data/output? (y/n): "; then
+    rm -rf "data/output"
+    echo "Deleted data/output."
+  else
+    echo "Kept data/output."
   fi
-}
-
-remove_volume_if_exists "${UPLOADS_VOLUME}"
-remove_volume_if_exists "${OUTPUTS_VOLUME}"
-remove_volume_if_exists "${HF_CACHE_VOLUME}"
-remove_volume_if_exists "${TORCH_CACHE_VOLUME}"
-
-echo
-echo "Saved app data volume:"
-echo "  ${APPDATA_VOLUME}"
-echo "This includes your saved Hugging Face token and app settings."
-if confirm_yes "Delete saved token and settings too? (y/n): "; then
-  remove_volume_if_exists "${APPDATA_VOLUME}"
-  echo "Deleted saved app data volume."
-else
-  echo "Kept saved token and settings."
 fi
 
-echo "Docker resources removed."
+if [[ -d "data/app-data" ]]; then
+  echo
+  echo "data/app-data includes saved settings and Hugging Face token."
+  if confirm_yes "Delete saved settings and token under data/app-data? (y/n): "; then
+    rm -rf "data/app-data"
+    echo "Deleted data/app-data."
+  else
+    echo "Kept data/app-data."
+  fi
+fi
+
+if [[ -d "data/cache" ]]; then
+  echo
+  if confirm_yes "Delete model caches under data/cache? (y/n): "; then
+    rm -rf "data/cache"
+    echo "Deleted data/cache."
+  else
+    echo "Kept data/cache."
+  fi
+fi
 
 if [[ -f ".env" ]]; then
   echo
   if confirm_yes "Delete local .env as well? (y/n): "; then
     rm -f ".env"
-    echo "Deleted .env"
+    echo "Deleted .env."
   else
-    echo "Kept .env"
+    echo "Kept .env."
   fi
 fi
 

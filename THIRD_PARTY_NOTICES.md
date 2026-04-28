@@ -8,17 +8,6 @@ It is not a substitute for each dependency's original license text. If you redis
 
 - `TimelineForVideo` application code: MIT
 
-## Bundled Frontend Libraries
-
-These files are vendored under `web/wwwroot/lib/`.
-
-| Component | Version source | License |
-| --- | --- | --- |
-| Bootstrap | bundled in repo | MIT |
-| jQuery | bundled in repo | MIT |
-| jQuery Validation | bundled in repo | MIT |
-| jQuery Validation Unobtrusive | bundled in repo | MIT |
-
 ## Direct Python Dependencies
 
 These are the direct worker dependencies currently pinned in `worker/requirements-cpu.txt`.
@@ -63,5 +52,5 @@ See [MODEL_AND_RUNTIME_NOTES.md](MODEL_AND_RUNTIME_NOTES.md) for operational not
 - The release bundle should contain launch scripts and source needed for local Docker builds, not generated runs, model caches, or private artifacts.
 - If you publish Docker images, confirm the exact FFmpeg package and its license conditions for that image.
 - If you upgrade pinned Python dependencies, review the resulting license set again.
-- Transitive dependencies pulled by `pip` or `dotnet restore` are not exhaustively listed here.
+- Transitive dependencies pulled by `pip` are not exhaustively listed here.
 - This project intentionally avoids `simple-diarizer` in the public v1 worker path to avoid pulling GPL-3.0 into the main application path.

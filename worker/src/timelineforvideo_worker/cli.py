@@ -40,7 +40,7 @@ def parse_args() -> argparse.Namespace:
         "save", help="Save Hugging Face token and terms confirmation."
     )
     settings_save.add_argument("--token", type=str, required=False)
-    settings_save.add_argument("--terms-confirmed", action="store_true")
+    settings_save.add_argument("--terms-confirmed", action="store_true", default=None)
     settings_save.add_argument("--compute-mode", choices=["cpu", "gpu"], required=False)
     settings_save.add_argument("--processing-quality", choices=["standard", "high"], required=False)
     settings_save.add_argument("--json", action="store_true")
@@ -114,9 +114,7 @@ def _runtime_config() -> AppConfig:
             for row in defaults.get("inputRoots", [])
             if row.get("enabled", True) and row.get("path")
         ],
-        output_root=str(
-            defaults.get("outputRoots", [{}])[0].get("path") or "/shared/outputs/default"
-        ),
+        output_root=str(defaults.get("outputRoots", [{}])[0].get("path") or "/data/output"),
         video_extensions=[str(ext) for ext in defaults.get("videoExtensions", [])],
         change_detection=ChangeDetectionConfig(),
         ocr_policy=OcrPolicy(),
@@ -237,7 +235,7 @@ def cmd_settings_status(as_json: bool) -> int:
 
 def cmd_settings_save(
     token: str | None,
-    terms_confirmed: bool,
+    terms_confirmed: bool | None,
     compute_mode: str | None,
     processing_quality: str | None,
     as_json: bool,
@@ -249,7 +247,8 @@ def cmd_settings_save(
         settings["computeMode"] = compute_mode
     if processing_quality is not None:
         settings["processingQuality"] = processing_quality
-    settings["huggingfaceTermsConfirmed"] = terms_confirmed
+    if terms_confirmed is not None:
+        settings["huggingfaceTermsConfirmed"] = terms_confirmed
     save_settings(settings)
     _print_payload(settings_snapshot(settings), as_json)
     return 0

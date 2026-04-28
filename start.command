@@ -3,10 +3,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 DOCKER_DESKTOP_URL="https://docs.docker.com/desktop/setup/install/mac-install/"
-export COMPOSE_PROJECT_NAME="timelineforvideo"
-LEGACY_COMPOSE_PROJECT_NAME="video2timeline"
 SKIP_HELP_LINK="${TIMELINEFORVIDEO_SKIP_HELP_LINK:-${VIDEO2TIMELINE_SKIP_HELP_LINK:-0}}"
-SKIP_BROWSER_OPEN="${TIMELINEFORVIDEO_SKIP_BROWSER_OPEN:-${VIDEO2TIMELINE_SKIP_BROWSER_OPEN:-0}}"
 
 if ! command -v docker >/dev/null 2>&1; then
   echo "Docker Desktop is not installed or docker is not on PATH."
@@ -30,108 +27,28 @@ if ! docker info >/dev/null 2>&1; then
   exit 1
 fi
 
-if docker volume inspect "${LEGACY_COMPOSE_PROJECT_NAME}_app-data" >/dev/null 2>&1; then
-  if ! docker volume inspect "${COMPOSE_PROJECT_NAME}_app-data" >/dev/null 2>&1; then
-    export COMPOSE_PROJECT_NAME="${LEGACY_COMPOSE_PROJECT_NAME}"
-    echo "Found existing video2timeline Docker data. Reusing it for TimelineForVideo."
-  fi
-fi
-
 if [ ! -f ".env" ]; then
   cp ".env.example" ".env"
   echo "Created .env from .env.example."
 fi
 
-read_env_value() {
-  local key="$1"
-  grep -E "^${key}=" .env | tail -n 1 | cut -d'=' -f2-
-}
+mkdir -p data/input data/output data/app-data data/cache/huggingface data/cache/torch
 
-open_app_window() {
-  local app_name="$1"
-  if [ -d "/Applications/${app_name}.app" ]; then
-    open -na "${app_name}" --args --app="${APP_URL}" --window-size="${APP_WINDOW_SIZE}"
-    return 0
-  fi
-  return 1
-}
+echo "Building TimelineForVideo CLI runtime..."
+docker compose build worker
 
-WEB_PORT="$(read_env_value TIMELINEFORVIDEO_WEB_PORT)"
-LEGACY_WEB_PORT=""
-if [ -z "${WEB_PORT}" ]; then
-  LEGACY_WEB_PORT="$(read_env_value VIDEO2TIMELINE_WEB_PORT)"
-fi
-if [ -n "${LEGACY_WEB_PORT}" ]; then
-  if [[ "${LEGACY_WEB_PORT}" =~ ^[0-9]+$ ]]; then
-    WEB_PORT="$((LEGACY_WEB_PORT + 1000))"
-    echo "Using port ${WEB_PORT} based on legacy VIDEO2TIMELINE_WEB_PORT=${LEGACY_WEB_PORT}."
-  else
-    WEB_PORT="${LEGACY_WEB_PORT}"
-  fi
-fi
-if [ -z "${WEB_PORT}" ]; then
-  WEB_PORT="19200"
-fi
+cat <<EOF
 
-is_port_listening() {
-  local port="$1"
-  lsof -nP -iTCP:"${port}" -sTCP:LISTEN >/dev/null 2>&1
-}
+TimelineForVideo CLI runtime is ready.
+Put videos in:
+  $(pwd)/data/input
 
-resolve_available_port() {
-  local port="$1"
-  while is_port_listening "${port}"; do
-    port=$((port + 1))
-  done
-  printf '%s' "${port}"
-}
+Common commands:
+  docker compose run --rm worker settings status
+  docker compose run --rm worker jobs create --directory /data/input
+  docker compose run --rm worker jobs list
+  docker compose run --rm worker jobs archive --job-id job-YYYYMMDD-HHMMSS-xxxxxxxx
 
-running_services="$(docker compose ps --services --status running || true)"
-if ! echo "${running_services}" | grep -qx "web" || ! echo "${running_services}" | grep -qx "worker"; then
-  RESOLVED_WEB_PORT="$(resolve_available_port "${WEB_PORT}")"
-  if [ "${RESOLVED_WEB_PORT}" != "${WEB_PORT}" ]; then
-    echo "Port ${WEB_PORT} is already in use. TimelineForVideo will use port ${RESOLVED_WEB_PORT} instead."
-    WEB_PORT="${RESOLVED_WEB_PORT}"
-  fi
-fi
-
-export TIMELINEFORVIDEO_WEB_PORT="${WEB_PORT}"
-
-APP_URL="http://localhost:${WEB_PORT}"
-APP_WINDOW_SIZE="960,640"
-
-echo "Starting web and worker containers..."
-compose_args=(-f docker-compose.yml)
-if command -v nvidia-smi >/dev/null 2>&1; then
-  compose_args+=(-f docker-compose.gpu.yml)
-  echo "NVIDIA GPU detected. Starting worker with GPU support enabled."
-fi
-docker compose "${compose_args[@]}" up --build -d
-
-echo "Waiting for containers and web health check..."
-for _ in $(seq 1 45); do
-  running_services="$(docker compose ps --services --status running || true)"
-  if echo "$running_services" | grep -qx "web" && echo "$running_services" | grep -qx "worker"; then
-    if curl -fsS "http://localhost:${WEB_PORT}" >/dev/null 2>&1; then
-      echo "TimelineForVideo is ready at http://localhost:${WEB_PORT}"
-      if [ "${SKIP_BROWSER_OPEN}" = "1" ]; then
-        exit 0
-      fi
-      if open_app_window "Google Chrome" || open_app_window "Microsoft Edge" || open_app_window "Brave Browser" || open_app_window "Chromium"; then
-        exit 0
-      fi
-      echo "No supported Chromium-based app-mode browser was found. Opening the default browser instead."
-      open "${APP_URL}"
-      exit 0
-    fi
-  fi
-  sleep 2
-done
-
-echo "TimelineForVideo did not become ready in time."
-echo
-docker compose ps || true
-echo
-echo "Last container logs:"
-docker compose logs --tail 40 web worker || true
-exit 1
+Results are written under:
+  $(pwd)/data/output
+EOF

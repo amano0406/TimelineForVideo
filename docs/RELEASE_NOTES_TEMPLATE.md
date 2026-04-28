@@ -1,12 +1,13 @@
 # TimelineForVideo v0.x.y Tech Preview
 
 Local-first video-to-markdown packaging tool for LLM workflows.
-This is a desktop-style local tool, not a hosted SaaS product.
+This is a CLI-based local tool, not a hosted SaaS product.
 
 ## Baseline Support
 
 - Windows
 - Docker Desktop
+- CLI
 - CPU mode
 
 ## Optional Features
@@ -30,13 +31,11 @@ This is a desktop-style local tool, not a hosted SaaS product.
 - first run downloads models and takes time
 - macOS is experimental
 - GPU is not the baseline support path
-- GUI is the primary supported path
+- CLI is the primary supported path
 - Docker Desktop is required
 
 ## Verification
 
-- `dotnet build web/TimelineForVideo.Web.csproj`
 - `python -m unittest discover worker/tests` with `PYTHONPATH=worker/src`
-- `scripts/test-e2e.ps1`
 - one real local smoke run
-- GUI ZIP download confirmed
+- `jobs archive` ZIP package confirmed

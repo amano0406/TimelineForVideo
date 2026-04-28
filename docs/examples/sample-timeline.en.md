@@ -5,7 +5,7 @@ This sample is based on a real generated timeline, with names, organizations, an
 ```md
 # Video Timeline
 
-- Source: `/shared/inputs/example/customer-followup-call.mp4`
+- Source: `/data/input/example/customer-followup-call.mp4`
 - Media ID: `2026-03-09-12-15-56-example`
 - Duration: `70.417s`
 

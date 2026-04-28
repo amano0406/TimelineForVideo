@@ -1,14 +1,10 @@
 @echo off
-setlocal EnableExtensions EnableDelayedExpansion
+setlocal EnableExtensions
 
 cd /d "%~dp0"
 set "DOCKER_DESKTOP_URL=https://docs.docker.com/desktop/setup/install/windows-install/"
-set "COMPOSE_PROJECT_NAME=timelineforvideo"
-set "LEGACY_COMPOSE_PROJECT_NAME=video2timeline"
 set "SKIP_HELP_LINK=%TIMELINEFORVIDEO_SKIP_HELP_LINK%"
 if not defined SKIP_HELP_LINK set "SKIP_HELP_LINK=%VIDEO2TIMELINE_SKIP_HELP_LINK%"
-set "SKIP_BROWSER_OPEN=%TIMELINEFORVIDEO_SKIP_BROWSER_OPEN%"
-if not defined SKIP_BROWSER_OPEN set "SKIP_BROWSER_OPEN=%VIDEO2TIMELINE_SKIP_BROWSER_OPEN%"
 
 where docker >nul 2>&1
 if errorlevel 1 (
@@ -30,113 +26,34 @@ if errorlevel 1 (
   exit /b 1
 )
 
-docker volume inspect "%LEGACY_COMPOSE_PROJECT_NAME%_app-data" >nul 2>&1
-if not errorlevel 1 (
-  docker volume inspect "%COMPOSE_PROJECT_NAME%_app-data" >nul 2>&1
-  if errorlevel 1 (
-    set "COMPOSE_PROJECT_NAME=%LEGACY_COMPOSE_PROJECT_NAME%"
-    echo Found existing video2timeline Docker data. Reusing it for TimelineForVideo.
-  )
-)
-
 if not exist ".env" (
   copy ".env.example" ".env" >nul
   echo Created .env from .env.example.
 )
 
-set "WEB_PORT=19200"
-set "HAS_WEB_PORT="
-set "LEGACY_WEB_PORT="
+if not exist "data\input" mkdir "data\input"
+if not exist "data\output" mkdir "data\output"
+if not exist "data\app-data" mkdir "data\app-data"
+if not exist "data\cache\huggingface" mkdir "data\cache\huggingface"
+if not exist "data\cache\torch" mkdir "data\cache\torch"
 
-for /f "usebackq tokens=1,* delims==" %%A in (".env") do (
-  if /I "%%A"=="TIMELINEFORVIDEO_WEB_PORT" (
-    set "WEB_PORT=%%B"
-    set "HAS_WEB_PORT=1"
-  )
-  if /I "%%A"=="VIDEO2TIMELINE_WEB_PORT" set "LEGACY_WEB_PORT=%%B"
-)
-
-if not defined HAS_WEB_PORT if defined LEGACY_WEB_PORT (
-  set /a SHIFTED_LEGACY_PORT=%LEGACY_WEB_PORT%+1000 >nul 2>&1
-  if not errorlevel 1 (
-    set "WEB_PORT=!SHIFTED_LEGACY_PORT!"
-    echo Using port !WEB_PORT! based on legacy VIDEO2TIMELINE_WEB_PORT=%LEGACY_WEB_PORT%.
-  ) else (
-    set "WEB_PORT=%LEGACY_WEB_PORT%"
-  )
-)
-
-set "WEB_RUNNING="
-set "WORKER_RUNNING="
-for /f %%S in ('docker compose ps --services --status running 2^>nul') do (
-  if /I "%%S"=="web" set "WEB_RUNNING=1"
-  if /I "%%S"=="worker" set "WORKER_RUNNING=1"
-)
-
-if not defined WEB_RUNNING if not defined WORKER_RUNNING (
-  call :ResolveAvailablePort "%WEB_PORT%"
-)
-
-set "TIMELINEFORVIDEO_WEB_PORT=%WEB_PORT%"
-
-echo Starting web and worker containers...
-set "COMPOSE_GPU_FILE="
-where nvidia-smi >nul 2>&1
-if not errorlevel 1 (
-  set "COMPOSE_GPU_FILE=-f docker-compose.gpu.yml"
-  echo NVIDIA GPU detected. Starting worker with GPU support enabled.
-)
-docker compose -f docker-compose.yml %COMPOSE_GPU_FILE% up --build -d
+echo Building TimelineForVideo CLI runtime...
+docker compose build worker
 if errorlevel 1 (
-  echo docker compose failed before the app became ready.
+  echo docker compose build failed.
   exit /b 1
 )
 
-echo Waiting for containers and web health check...
-set /a ATTEMPT=0
-
-:wait_loop
-set /a ATTEMPT+=1
-set "WEB_RUNNING="
-set "WORKER_RUNNING="
-
-for /f %%S in ('docker compose ps --services --status running 2^>nul') do (
-  if /I "%%S"=="web" set "WEB_RUNNING=1"
-  if /I "%%S"=="worker" set "WORKER_RUNNING=1"
-)
-
-if defined WEB_RUNNING if defined WORKER_RUNNING (
-  powershell -NoLogo -NoProfile -Command "try { $response = Invoke-WebRequest -Uri 'http://localhost:%WEB_PORT%' -UseBasicParsing -TimeoutSec 5; if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 500) { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>&1
-  if not errorlevel 1 goto ready
-)
-
-if !ATTEMPT! GEQ 45 goto failed
-
-powershell -NoLogo -NoProfile -Command "Start-Sleep -Seconds 2" >nul 2>&1
-goto wait_loop
-
-:ready
-echo TimelineForVideo is ready at http://localhost:%WEB_PORT%
-if /I "%SKIP_BROWSER_OPEN%"=="1" exit /b 0
-
-powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\open-app-window.ps1" -Url "http://localhost:%WEB_PORT%" -Width 960 -Height 640
-exit /b %ERRORLEVEL%
-
-:failed
-echo TimelineForVideo did not become ready in time.
 echo.
-docker compose ps
+echo TimelineForVideo CLI runtime is ready.
+echo Put videos in:
+echo   %CD%\data\input
 echo.
-echo Last container logs:
-docker compose logs --tail 40 web worker
-exit /b 1
-
-:ResolveAvailablePort
-setlocal
-set "REQUESTED_PORT=%~1"
-for /f %%P in ('powershell -NoLogo -NoProfile -Command "$port=[int]('%~1'); while (Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue) { $port++ }; Write-Output $port"') do set "RESOLVED_PORT=%%P"
-if not "%REQUESTED_PORT%"=="%RESOLVED_PORT%" (
-  echo Port %REQUESTED_PORT% is already in use. TimelineForVideo will use port %RESOLVED_PORT% instead.
-)
-endlocal & set "WEB_PORT=%RESOLVED_PORT%"
-exit /b 0
+echo Common commands:
+echo   docker compose run --rm worker settings status
+echo   docker compose run --rm worker jobs create --directory /data/input
+echo   docker compose run --rm worker jobs list
+echo   docker compose run --rm worker jobs archive --job-id job-YYYYMMDD-HHMMSS-xxxxxxxx
+echo.
+echo Results are written under:
+echo   %CD%\data\output

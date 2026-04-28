@@ -2,6 +2,7 @@
 .gitignore
 .env
 .venv
+data
 app-data
 uploads
 runs
@@ -9,8 +10,6 @@ __pycache__
 *.pyc
 *.pyo
 *.pyd
-web/bin
-web/obj
 worker/.venv
 worker/.pytest_cache
 worker/__pycache__

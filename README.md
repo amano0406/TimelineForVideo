@@ -14,11 +14,11 @@ Current public contract:
 - macOS: source-based experimental path
 - GPU mode: optional, NVIDIA-only, best-effort
 - speaker diarization: optional, requires a Hugging Face token plus gated approval for `pyannote/speaker-diarization-community-1`
-- this is a local-first desktop-style tool, not a hosted SaaS product
+- this is a local-first CLI tool, not a hosted SaaS product
 
 ## What This App Does
 
-This app takes video files on your computer and turns them into a ZIP package that is easier to upload to an LLM.
+This app takes video files on your computer and turns them into timeline files and a ZIP package that is easier to upload to an LLM.
 
 Inside the app, the processing is simple:
 
@@ -37,35 +37,13 @@ You do not need to know model names or internal details to use it.
 - screen recording review
 - turning old video archives into LLM-ready text material
 
-## Screenshots
-
-### Language
-
-![Language](docs/screenshots/language-en.png)
-
-### Settings
-
-![Settings](docs/screenshots/settings-en.png)
-
-### New Job
-
-![New Job](docs/screenshots/new-job-en.png)
-
-### Jobs
-
-![Jobs](docs/screenshots/jobs-en.png)
-
-### Job Details
-
-![Job Details](docs/screenshots/run-details-en.png)
-
 ## Basic Flow
 
-1. choose your video files
-2. start processing
+1. put your video files under `data/input`
+2. run a CLI command
 3. wait for completion  
    Advanced AI processing takes some time
-4. download the ZIP package
+4. create the ZIP package with `jobs archive`
 5. upload that ZIP to ChatGPT, Claude, or another LLM if you want analysis
 
 Examples of what you can ask an LLM after that:
@@ -101,19 +79,15 @@ TimelineForVideo-export.zip
 
 Each markdown file inside `timelines/` is one video timeline.
 
-If a job finishes with partial success, the ZIP still downloads. In that case it contains successful timelines plus the failure report and worker log.
+If a job finishes with partial success, the ZIP can still be created. In that case it contains successful timelines plus the failure report and worker log.
 
 ## Reuse And Rerun Behavior
 
-When you upload files that were already processed before, the app checks for reusable results first.
+When you process files that were already processed before, the CLI checks for reusable results first.
 
-- if reusable timelines are still available, the app asks whether to reuse them or reprocess the files
-- reused results remain visible from the new job details screen
-- from job details, you can rerun the same source files with either:
-  - the same settings as the original job
-  - the current settings in `Settings`
-
-This makes it easier to rerun a job after changing compute mode, quality, or diarization-related setup.
+- if reusable timelines are still available, the default behavior is to reuse them
+- use `--reprocess-duplicates` when you intentionally want a fresh run
+- use `settings save` before a new run when you want to change compute mode, quality, or diarization-related setup
 
 ## Internal Working Files vs ZIP Output
 
@@ -127,7 +101,7 @@ That internal folder can contain:
 - screenshot notes
 - temporary processing files
 
-Those files are for the app itself. The downloadable ZIP is the reduced handoff package for LLM use.
+Those files are for the app itself. The archive ZIP is the reduced handoff package for LLM use.
 
 ## Quick Start
 
@@ -137,7 +111,7 @@ Windows:
 .\start.bat
 ```
 
-This is the primary supported path for the `v0.4.0` public release line.
+This prepares the Docker-based CLI runtime and creates the fixed local folders.
 
 macOS:
 
@@ -145,22 +119,33 @@ macOS:
 ./start.command
 ```
 
-This path is available as an experimental source-based setup in `v0.4.0`. It is not the baseline support contract for the current public release line.
+This path is available as an experimental source-based setup in `v0.4.0`. It prepares the Docker-based CLI runtime.
 
-Then:
+Then put videos in:
 
-1. choose your language
-2. open `Settings`
-3. save your Hugging Face token if you want speaker diarization
-4. choose `CPU` or `GPU`
-5. choose processing quality
-6. create a new job
-7. wait for processing to finish
-8. download the ZIP package
+```text
+data/input/
+```
 
-During processing, the jobs list and job details screens show elapsed time and an estimated remaining time. The estimate becomes more useful as more completed jobs are available for comparison.
+Create and run a job:
 
-The start script tries to open an app-style window with Google Chrome, Microsoft Edge, Brave, or Chromium. If none of those are available, it falls back to a normal browser window.
+```powershell
+docker compose run --rm worker jobs create --directory /data/input
+```
+
+List jobs:
+
+```powershell
+docker compose run --rm worker jobs list
+```
+
+Create the ZIP package:
+
+```powershell
+docker compose run --rm worker jobs archive --job-id job-YYYYMMDD-HHMMSS-xxxxxxxx
+```
+
+Results are written under `data/output`.
 
 ## Requirements
 
@@ -207,27 +192,9 @@ Primary support:
 
 Actual decoding still depends on the `ffmpeg` build inside the runtime image.
 
-## Localization
-
-Supported locales:
-
-- `en`
-- `ja`
-- `zh-CN`
-- `zh-TW`
-- `ko`
-- `es`
-- `fr`
-- `de`
-- `pt`
-
-English is the default on first launch. The selected language is stored in the app settings data, not in `.env`.
-
 ## CLI
 
-The GUI is the main entry point. A worker CLI is also available for scripting and direct local execution.
-
-For the initial public release, the GUI is the primary supported path. The CLI is an advanced path, and concurrent daemon plus CLI operation is not part of the public support guarantee.
+The CLI is the supported entry point.
 
 Common commands:
 
@@ -242,23 +209,22 @@ Common commands:
 Example:
 
 ```powershell
-$env:PYTHONPATH=".\worker\src"
-python -m timelineforvideo_worker settings status
-python -m timelineforvideo_worker settings save --token hf_xxx --terms-confirmed
-python -m timelineforvideo_worker jobs create --file C:\path\to\clip.mp4
-python -m timelineforvideo_worker jobs create --directory C:\path\to\folder
-python -m timelineforvideo_worker jobs list
-python -m timelineforvideo_worker jobs archive --job-id run-YYYYMMDD-HHMMSS-xxxx
+docker compose run --rm worker settings status
+docker compose run --rm worker settings save --token hf_xxx --terms-confirmed
+docker compose run --rm worker settings save --compute-mode cpu --processing-quality standard
+docker compose run --rm worker jobs create --file /data/input/clip.mp4
+docker compose run --rm worker jobs create --directory /data/input
+docker compose run --rm worker jobs list
+docker compose run --rm worker jobs archive --job-id job-YYYYMMDD-HHMMSS-xxxxxxxx
 ```
 
-`jobs archive` creates the same reduced ZIP-style handoff package that the GUI downloads.
+`jobs archive` creates the reduced ZIP-style handoff package.
 
 ## Testing
 
 Current test coverage is intentionally lightweight:
 
 - Python worker unit tests
-- Playwright-based E2E smoke tests for the ASP.NET Core UI
 - manual smoke runs with real local jobs
 
 Run worker unit tests:
@@ -266,12 +232,6 @@ Run worker unit tests:
 ```powershell
 $env:PYTHONPATH=".\worker\src"
 python -m unittest discover .\worker\tests
-```
-
-Run browser E2E tests:
-
-```powershell
-.\scripts\test-e2e.ps1
 ```
 
 Enable commit-time lint checks:

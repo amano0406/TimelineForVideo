@@ -12,44 +12,36 @@ The system prioritizes:
 
 ## App Model
 
-- `web`: ASP.NET Core Razor Pages
 - `worker`: Python
-- coordination: shared filesystem, not HTTP worker calls
+- interface: CLI commands
+- storage: fixed local folders mounted into Docker
 
 ## User Flow
 
-1. open the GUI
-2. choose one or more mounted input roots
-3. optionally upload extra files
-4. choose an output root
-5. start a run
-6. open the run detail page
-7. inspect `timeline.md` for each media item
+1. put one or more videos under `data/input`
+2. run `jobs create`
+3. inspect the generated job under `data/output`
+4. run `jobs archive` when a ZIP handoff package is needed
 
 ## Input Model
 
 v1 supports:
 
-- mounted directories
-- multi-file uploads
+- fixed Docker input root: `/data/input`
+- direct CLI file paths inside the runtime
 
-The web app expands selected roots into concrete file items before writing `request.json`.
+The CLI expands selected files or directories into concrete input items before writing `request.json`.
 
 ## Current Docker Storage Contract
 
-The current Docker contract uses named volumes mounted inside the containers:
+The current Docker contract uses repo-local fixed folders mounted into the worker container:
 
-- uploads input root: `/shared/uploads`
-- run output root: `/shared/outputs`
-- app state and secrets root: `/shared/app-data`
-- model caches: `/cache/huggingface` and `/cache/torch`
+- input root: `data/input` on the host, mounted as `/data/input`
+- run output root: `data/output` on the host, mounted as `/data/output`
+- app state and secrets root: `data/app-data` on the host, mounted as `/data/app-data`
+- model caches: `data/cache/huggingface` and `data/cache/torch`
 
-This differs from the shared Timeline baseline that uses a repo-local `data/` workspace such as
-`data/input/video` and `data/output/runs/timeline-for-video`.
-
-For the current v1 release line, `/shared/uploads` and `/shared/outputs` are the active Docker
-runtime contract. Moving Docker runs to the shared `data/` baseline would be an output/storage
-contract migration and should not be done without explicit approval.
+Previous named Docker volumes are no longer the active runtime contract.
 
 ## Output Model
 
@@ -81,7 +73,7 @@ LLM export writes:
 
 ## Progress Model
 
-The GUI shows:
+`status.json` records:
 
 - `videos_done / videos_total`
 - `videos_skipped`
@@ -95,14 +87,14 @@ ETA is derived from processed media duration versus elapsed wall time.
 
 ## Settings
 
-Stored in `app-data/settings.json`:
+Stored in `data/app-data/settings.json`:
 
 - input roots
 - output roots
 - video extensions
 - Hugging Face terms confirmation
 
-Stored separately in `app-data/secrets/huggingface.token`:
+Stored separately in `data/app-data/secrets/huggingface.token`:
 
 - Hugging Face token
 
@@ -117,7 +109,7 @@ There is no user-facing model picker in v1.
 ## CPU / GPU
 
 - CPU path is implemented
-- GPU is intentionally shown as coming soon
+- GPU is optional and best-effort on supported NVIDIA + Docker GPU setups
 
 ## Duplicate Handling
 

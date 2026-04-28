@@ -5,29 +5,27 @@ Use this checklist before switching the repository from private to public.
 ## Repository Safety
 
 - no real Hugging Face token is committed
-- `.env`, `runs/`, `uploads/`, `app-data/`, and local caches are ignored
+- `.env`, `data/`, `runs/`, `uploads/`, `app-data/`, and local caches are ignored
 - sample timelines are redacted
-- screenshots do not show local private data
+- sample files do not show local private data
 - config samples use generic placeholder paths instead of personal paths
 - generated ZIPs or run outputs are not tracked
 
 ## Build And Test
 
-- `dotnet build web/TimelineForVideo.Web.csproj`
 - `python -m unittest discover worker/tests` with `PYTHONPATH=worker/src`
-- `scripts/test-e2e.ps1`
 - at least one real local smoke run still completes
-- ZIP download still works in the GUI
+- `jobs archive` creates the reduced ZIP package
 
 ## Runtime Checks
 
-- app starts from `start.bat` on Windows
-- `start.command` still works as an experimental source-based path on macOS
-- settings page loads without a token
-- token save flow still works
+- `start.bat` prepares the Docker-based CLI runtime on Windows
+- `start.command` prepares the Docker-based CLI runtime on macOS as an experimental source-based path
+- `docker compose run --rm worker settings status` works
+- token save flow works through `settings save`
 - gated-model approval links still open the correct Hugging Face pages
-- one uploaded file can complete end-to-end
-- one completed run can be deleted
+- one file under `data/input` can complete end-to-end
+- one completed job can be archived
 
 ## Documentation
 
@@ -45,7 +43,7 @@ Use this checklist before switching the repository from private to public.
 - `scripts/build-release-bundle.ps1 -Version 0.x.y` produces `TimelineForVideo-windows-local.zip`
 - `SHA256SUMS.txt` is generated for the release bundle
 - the bundle top folder is `TimelineForVideo-v0.x.y`
-- the bundle does not include generated runs, uploads, app-data, tests, or local caches
+- the bundle does not include generated runs, input files, app-data, tests, Web UI files, or local caches
 
 ## Before Making The Repo Public
 

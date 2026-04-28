@@ -257,7 +257,7 @@ def _write_support_docs(job_dir: Path, request: JobRequest) -> None:
             f"- Input Count: `{len(request.input_items)}`",
             f"- Reprocess Duplicates: `{request.reprocess_duplicates}`",
             "",
-            "This run uses file-based coordination between the ASP.NET Core web app and the Python worker.",
+            "This job was created and processed by the TimelineForVideo CLI worker.",
             "",
         ]
     )

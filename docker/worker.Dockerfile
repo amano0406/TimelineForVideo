@@ -22,4 +22,4 @@ COPY worker/ /app/worker/
 COPY configs/ /app/config/
 
 ENV PYTHONPATH=/app/worker/src
-ENTRYPOINT ["python", "-m", "timelineforvideo_worker", "daemon", "--poll-interval", "5"]
+ENTRYPOINT ["python", "-m", "timelineforvideo_worker"]

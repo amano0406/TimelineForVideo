@@ -9,7 +9,7 @@ The current public release line is `TimelineForVideo v0.4.0 Tech Preview`.
 - baseline support is Windows + Docker Desktop + CPU mode
 - macOS is an experimental source-based path
 - GPU mode is available only on supported NVIDIA + Docker GPU setups and is best-effort, not baseline support
-- this app is local-first and desktop-style, not a hosted SaaS service
+- this app is local-first and CLI-based, not a hosted SaaS service
 
 ## Models Used by the Worker
 
@@ -75,7 +75,7 @@ Silence trimming is used internally as a processing optimization.
 
 ## Intended Workflow
 
-The generated run output is designed to be reviewed locally, then compressed and uploaded to ChatGPT or another LLM for follow-up analysis.
+The generated job output is designed to be reviewed locally, then archived and uploaded to ChatGPT or another LLM for follow-up analysis.
 
 Typical follow-up use cases:
 

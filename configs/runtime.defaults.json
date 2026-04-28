@@ -9,9 +9,9 @@
   ],
   "inputRoots": [
     {
-      "id": "uploads",
-      "displayName": "Uploaded Files",
-      "path": "/shared/uploads",
+      "id": "input",
+      "displayName": "Input",
+      "path": "/data/input",
       "enabled": true
     }
   ],
@@ -19,7 +19,7 @@
     {
       "id": "runs",
       "displayName": "Runs",
-      "path": "/shared/outputs",
+      "path": "/data/output",
       "enabled": true
     }
   ]
