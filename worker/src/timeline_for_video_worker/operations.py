@@ -1381,7 +1381,3 @@ def main(argv: list[str] | None = None) -> int:
     except SettingsError as exc:
         emit_json({"ok": False, "error": str(exc)})
         return 2
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

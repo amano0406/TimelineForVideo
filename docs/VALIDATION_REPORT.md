@@ -16,11 +16,10 @@ git diff --check
 docker compose config
 docker compose -f docker-compose.yml -f docker-compose.gpu.yml config
 docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build --no-deps worker
-docker compose -f docker-compose.yml -f docker-compose.gpu.yml exec -T worker python -m timeline_for_video_worker health --json
-docker compose -f docker-compose.yml -f docker-compose.gpu.yml exec -T worker python -m timeline_for_video_worker models list --json
-docker compose -f docker-compose.yml -f docker-compose.gpu.yml exec -T worker python -m timeline_for_video_worker doctor --json
-docker compose -f docker-compose.yml -f docker-compose.gpu.yml exec -T worker python -m timeline_for_video_worker settings status --json
-docker compose -f docker-compose.yml -f docker-compose.gpu.yml exec -T -e TIMELINE_FOR_VIDEO_SETTINGS_PATH=<smoke-settings> worker python -m timeline_for_video_worker serve --once --max-items 1 --samples-per-video 3 --json
+curl.exe http://127.0.0.1:19500/health
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:19500/models/list -Body "{}"
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:19500/settings/status -Body "{}"
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:19500/items/refresh -Body "{""maxItems"":1,""samplesPerVideo"":3}"
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "<parse start.ps1/stop.ps1>"
 ```
 
