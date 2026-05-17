@@ -49,7 +49,7 @@
 ## Required Docs
 
 - `README.md`
-- `docs/CLI.md`
+- local API documentation
 - `docs/OUTPUTS.md`
 - `docs/PIPELINE.md`
 - `docs/RUNTIME.md`

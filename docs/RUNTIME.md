@@ -5,9 +5,8 @@ The supported runtime path is Docker-first from Windows PowerShell.
 ```powershell
 cd C:\apps\TimelineForVideo
 .\start.ps1
-.\cli.ps1 health
-.\cli.ps1 items refresh --max-items 1
 Invoke-RestMethod http://127.0.0.1:19500/health
+Invoke-RestMethod http://127.0.0.1:19500/items/list -Method Post -Body "{}" -ContentType "application/json"
 ```
 
 `start.ps1` starts an idle Python command worker container and a minimal C#
@@ -18,9 +17,8 @@ intentionally want Docker images rebuilt. The health API exposes only
 
 The worker container does not process videos on startup. This prevents Docker
 Desktop or compose restarts from automatically resuming an interrupted video
-processing run. Processing starts only when a CLI processing command is
-explicitly invoked, for example `items refresh`, `process all`, `serve --once`,
-or `serve`.
+processing run. Processing starts only when the local API explicitly requests
+it, for example through `POST /items/refresh`.
 
 The worker image includes Python, ffmpeg/ffprobe, Tesseract OCR, and Japanese +
 English OCR language data. The compose services mount:
@@ -36,7 +34,7 @@ shared cache volume is used for Hugging Face, Torch, and related model caches
 so audio-model downloads can be reused across worker runs for the same product
 instance.
 
-The Docker service stays alive with an idle command. `cli.ps1` executes commands
+The Docker service stays alive with an idle command. The local API executes commands
 inside that container. `serve` still exists as the resident worker loop, but it
 is manual: it loads `settings.json`, processes changed videos with the same
 pipeline as `items refresh`, records run status, then sleeps until the next
@@ -47,7 +45,7 @@ operator explicitly raises or clears that environment variable.
 ## CPU And GPU Compose
 
 GPU is the default worker flavor for TimelineForAudio-compatible audio models.
-When `settings.json` has `"computeMode": "gpu"`, `start.ps1` and `cli.ps1` add
+When `settings.json` has `"computeMode": "gpu"`, `start.ps1` and the local API add
 `docker-compose.gpu.yml` to the Docker Compose command. The GPU compose layer
 uses `docker/worker.gpu.Dockerfile`, requests all available GPUs, and installs
 GPU audio-model dependencies. The default CPU compose file remains the base
@@ -70,19 +68,15 @@ Tesseract/Pillow processing.
 ## Health Check
 
 ```powershell
-.\cli.ps1 health --json
 Invoke-RestMethod http://127.0.0.1:19500/health
 ```
 
-The JSON output reports product, version, Python version, Docker status, and
-settings path. The C# health API returns only `true` or `false` for future API
-migration readiness checks.
+The health API returns `true` or `false`.
 
 ## Run Status
 
 ```powershell
-.\cli.ps1 runs list
-.\cli.ps1 runs show --run-id <RUN_ID>
+Run status is recorded under the configured output and runtime state paths.
 ```
 
 Run metadata is operational state. It is not included in download ZIPs.

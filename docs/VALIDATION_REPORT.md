@@ -21,7 +21,7 @@ docker compose -f docker-compose.yml -f docker-compose.gpu.yml exec -T worker py
 docker compose -f docker-compose.yml -f docker-compose.gpu.yml exec -T worker python -m timeline_for_video_worker doctor --json
 docker compose -f docker-compose.yml -f docker-compose.gpu.yml exec -T worker python -m timeline_for_video_worker settings status --json
 docker compose -f docker-compose.yml -f docker-compose.gpu.yml exec -T -e TIMELINE_FOR_VIDEO_SETTINGS_PATH=<smoke-settings> worker python -m timeline_for_video_worker serve --once --max-items 1 --samples-per-video 3 --json
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "<parse cli.ps1/start.ps1/stop.ps1>"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "<parse start.ps1/stop.ps1>"
 ```
 
 ## Results
