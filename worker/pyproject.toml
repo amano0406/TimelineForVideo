@@ -11,9 +11,6 @@ dependencies = [
   "pytesseract>=0.3.10,<0.4",
 ]
 
-[project.scripts]
-timeline-for-video = "timeline_for_video_worker.commands:main"
-
 [tool.setuptools.packages.find]
 where = ["src"]
 
