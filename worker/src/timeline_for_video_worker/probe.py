@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
 import json
+import os
 from pathlib import Path
 import shlex
 import subprocess
@@ -41,7 +42,15 @@ def sha256_hex(value: str) -> str:
 
 
 def command_prefix(command: str) -> list[str]:
+    if os.name == "nt":
+        return [_strip_wrapping_quotes(part) for part in shlex.split(command, posix=False)]
     return shlex.split(command)
+
+
+def _strip_wrapping_quotes(value: str) -> str:
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+        return value[1:-1]
+    return value
 
 
 def ffprobe_version(ffprobe_bin: str = "ffprobe") -> dict[str, Any]:

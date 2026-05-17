@@ -11,7 +11,7 @@ Do not create a shared framework with `TimelineForAudio` or
 
 ## 3. Product Definition
 
-`TimelineForVideo` v1 is a local CLI product that reads video files and writes
+`TimelineForVideo` v1 is a local Docker worker plus API product that reads video files and writes
 structured, timeline-oriented evidence outputs.
 
 ## 4. Timeline Coordinate

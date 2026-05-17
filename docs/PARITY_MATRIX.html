@@ -245,301 +245,301 @@
   <main>
     <header>
       <h1>TimelineForVideo AI / Preprocessing Parity Matrix</h1>
-      <p class="note">作成日: 2026-05-07 / 目的: TimelineForAudio と TimelineForImage のAI・前処理契約が、TimelineForVideoで同等に動いているかを丸バツ確認する。</p>
-      <p class="note">参照元は読み取り専用で確認した。TimelineForVideo は TimelineForAudio/Image のコードを import せず、共有ライブラリ化もしていない。</p>
+      <p class="note">菴懈・譌･: 2026-05-07 / 逶ｮ逧・ TimelineForAudio 縺ｨ TimelineForImage 縺ｮAI繝ｻ蜑榊・逅・･醍ｴ・′縲ゝimelineForVideo縺ｧ蜷檎ｭ峨↓蜍輔＞縺ｦ縺・ｋ縺九ｒ荳ｸ繝舌ヤ遒ｺ隱阪☆繧九・/p>
+      <p class="note">蜿ら・蜈・・隱ｭ縺ｿ蜿悶ｊ蟆ら畑縺ｧ遒ｺ隱阪＠縺溘５imelineForVideo 縺ｯ TimelineForAudio/Image 縺ｮ繧ｳ繝ｼ繝峨ｒ import 縺帙★縲∝・譛峨Λ繧､繝悶Λ繝ｪ蛹悶ｂ縺励※縺・↑縺・・/p>
     </header>
 
-    <section class="summary" aria-label="判定サマリー">
+    <section class="summary" aria-label="蛻､螳壹し繝槭Μ繝ｼ">
       <div class="metric">
         <div class="value ok">25</div>
-        <div class="label">○ 実装または契約が一致</div>
+        <div class="label">笳・螳溯｣・∪縺溘・螂醍ｴ・′荳閾ｴ</div>
       </div>
       <div class="metric">
         <div class="value partial">0</div>
-        <div class="label">△ 未解消の差分</div>
+        <div class="label">笆ｳ 譛ｪ隗｣豸医・蟾ｮ蛻・/div>
       </div>
       <div class="metric">
         <div class="value missing">0</div>
-        <div class="label">× 未実装または不一致</div>
+        <div class="label">ﾃ・譛ｪ螳溯｣・∪縺溘・荳堺ｸ閾ｴ</div>
       </div>
       <div class="metric">
         <div class="value na">25</div>
-        <div class="label">確認項目合計</div>
+        <div class="label">遒ｺ隱埼・岼蜷郁ｨ・/div>
       </div>
     </section>
 
     <section class="panel">
-      <h2>判定基準</h2>
+      <h2>蛻､螳壼渕貅・/h2>
       <div class="legend">
-        <span class="badge ok">○ 同じ契約または同じ処理方針で実装済み</span>
-        <span class="badge partial">△ 動くが、参照製品と処理単位・入力・既定値・検証状態に差分がある</span>
-        <span class="badge missing">× 現状は参照製品と同じロジックではない</span>
-        <span class="badge na">N/A v1対象外またはVideo固有処理</span>
+        <span class="badge ok">笳・蜷後§螂醍ｴ・∪縺溘・蜷後§蜃ｦ逅・婿驥昴〒螳溯｣・ｸ医∩</span>
+        <span class="badge partial">笆ｳ 蜍輔￥縺後∝盾辣ｧ陬ｽ蜩√→蜃ｦ逅・腰菴阪・蜈･蜉帙・譌｢螳壼､繝ｻ讀懆ｨｼ迥ｶ諷九↓蟾ｮ蛻・′縺ゅｋ</span>
+        <span class="badge missing">ﾃ・迴ｾ迥ｶ縺ｯ蜿ら・陬ｽ蜩√→蜷後§繝ｭ繧ｸ繝・け縺ｧ縺ｯ縺ｪ縺・/span>
+        <span class="badge na">N/A v1蟇ｾ雎｡螟悶∪縺溘・Video蝗ｺ譛牙・逅・/span>
       </div>
-      <p class="note">この表では「同じロジック」を、コード共有ではなく「同じ入力前処理、同じモデル、同じ失敗時契約、同じ公開フィールドで動くこと」として扱う。</p>
+      <p class="note">縺薙・陦ｨ縺ｧ縺ｯ縲悟酔縺倥Ο繧ｸ繝・け縲阪ｒ縲√さ繝ｼ繝牙・譛峨〒縺ｯ縺ｪ縺上悟酔縺伜・蜉帛燕蜃ｦ逅・∝酔縺倥Δ繝・Ν縲∝酔縺伜､ｱ謨玲凾螂醍ｴ・∝酔縺伜・髢九ヵ繧｣繝ｼ繝ｫ繝峨〒蜍輔￥縺薙→縲阪→縺励※謇ｱ縺・・/p>
     </section>
 
     <section>
-      <h2>比較表</h2>
+      <h2>豈碑ｼ・｡ｨ</h2>
       <table aria-label="AI and preprocessing parity">
         <thead>
           <tr>
-            <th style="width: 8%;">区分</th>
-            <th style="width: 16%;">比較項目</th>
-            <th style="width: 22%;">参照製品の契約</th>
-            <th style="width: 22%;">TimelineForVideoの現状</th>
-            <th style="width: 6%;">判定</th>
-            <th style="width: 14%;">根拠</th>
-            <th style="width: 12%;">次アクション</th>
+            <th style="width: 8%;">蛹ｺ蛻・/th>
+            <th style="width: 16%;">豈碑ｼ・・岼</th>
+            <th style="width: 22%;">蜿ら・陬ｽ蜩√・螂醍ｴ・/th>
+            <th style="width: 22%;">TimelineForVideo縺ｮ迴ｾ迥ｶ</th>
+            <th style="width: 6%;">蛻､螳・/th>
+            <th style="width: 14%;">譬ｹ諡</th>
+            <th style="width: 12%;">谺｡繧｢繧ｯ繧ｷ繝ｧ繝ｳ</th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <td class="category">Audio</td>
-            <td>モデル・依存の棚卸し</td>
-            <td><code>models list</code> で pyannote、faster-whisper、FFmpeg、GPU条件を確認できる。</td>
-            <td>Videoの <code>models list --json</code> はAudio互換の <code>models</code> 配列、<code>pipeline.generation_signature</code>、Video固有の <code>components</code> 配列を返す。<code>--include-remote</code> でHugging Faceのlicense/gated情報も取得できる。</td>
-            <td class="status ok">○</td>
-            <td><code>model_inventory.py</code>, Docker実行結果</td>
-            <td>なし。</td>
+            <td>繝｢繝・Ν繝ｻ萓晏ｭ倥・譽壼査縺・/td>
+            <td><code>models list</code> 縺ｧ pyannote縲’aster-whisper縲：Fmpeg縲；PU譚｡莉ｶ繧堤｢ｺ隱阪〒縺阪ｋ縲・/td>
+            <td>Video縺ｮ <code>models list --json</code> 縺ｯAudio莠呈鋤縺ｮ <code>models</code> 驟榊・縲・code>pipeline.generation_signature</code>縲〃ideo蝗ｺ譛峨・ <code>components</code> 驟榊・繧定ｿ斐☆縲・code>--include-remote</code> 縺ｧHugging Face縺ｮlicense/gated諠・ｱ繧ょ叙蠕励〒縺阪ｋ縲・/td>
+            <td class="status ok">笳・/td>
+            <td><code>model_inventory.py</code>, Docker螳溯｡檎ｵ先棡</td>
+            <td>縺ｪ縺励・/td>
           </tr>
           <tr>
             <td class="category">Audio</td>
-            <td>ffprobeメタデータとsource identity</td>
-            <td>Audioは処理前に <code>ffprobe</code> でメディア情報を読む。</td>
-            <td>Videoはsource videoを読み取り専用で <code>ffprobe</code> し、source identity / fingerprintを生成する。</td>
-            <td class="status ok">○</td>
+            <td>ffprobe繝｡繧ｿ繝・・繧ｿ縺ｨsource identity</td>
+            <td>Audio縺ｯ蜃ｦ逅・燕縺ｫ <code>ffprobe</code> 縺ｧ繝｡繝・ぅ繧｢諠・ｱ繧定ｪｭ繧縲・/td>
+            <td>Video縺ｯsource video繧定ｪｭ縺ｿ蜿悶ｊ蟆ら畑縺ｧ <code>ffprobe</code> 縺励《ource identity / fingerprint繧堤函謌舌☆繧九・/td>
+            <td class="status ok">笳・/td>
             <td><code>probe.py</code>, <code>docs/PIPELINE.md</code></td>
-            <td>なし。</td>
+            <td>縺ｪ縺励・/td>
           </tr>
           <tr>
             <td class="category">Audio</td>
-            <td>モデル入力前処理</td>
-            <td>Audioは <code>ffmpeg</code> で正規化WAVを作り、モデル処理は正規化WAVを読む。正規化WAVは処理中間物でmaster artifactにしない。</td>
-            <td>Videoはレビュー用MP3とは別に一時正規化WAVを作り、pyannote/faster-whisperはそのWAVを読む。WAVは処理後に削除され、master artifactに残さない。</td>
-            <td class="status ok">○</td>
+            <td>繝｢繝・Ν蜈･蜉帛燕蜃ｦ逅・/td>
+            <td>Audio縺ｯ <code>ffmpeg</code> 縺ｧ豁｣隕丞喧WAV繧剃ｽ懊ｊ縲√Δ繝・Ν蜃ｦ逅・・豁｣隕丞喧WAV繧定ｪｭ繧縲よｭ｣隕丞喧WAV縺ｯ蜃ｦ逅・ｸｭ髢鍋黄縺ｧmaster artifact縺ｫ縺励↑縺・・/td>
+            <td>Video縺ｯ繝ｬ繝薙Η繝ｼ逕ｨMP3縺ｨ縺ｯ蛻･縺ｫ荳譎よｭ｣隕丞喧WAV繧剃ｽ懊ｊ縲｝yannote/faster-whisper縺ｯ縺昴・WAV繧定ｪｭ繧縲８AV縺ｯ蜃ｦ逅・ｾ後↓蜑企勁縺輔ｌ縲［aster artifact縺ｫ谿九＆縺ｪ縺・・/td>
+            <td class="status ok">笳・/td>
             <td>Audio <code>processor.py</code> / Video <code>audio_analysis.py</code></td>
-            <td>なし。</td>
+            <td>縺ｪ縺励・/td>
           </tr>
           <tr>
             <td class="category">Audio</td>
-            <td>speech candidate検出</td>
-            <td>Audioは正規化WAVから候補区間を作り、候補マップを処理中だけ保持する。</td>
-            <td>Videoは一時正規化WAVを起点に <code>ffmpeg silencedetect</code> を実行し、候補区間を構造化証跡として保存する。</td>
-            <td class="status ok">○</td>
+            <td>speech candidate讀懷・</td>
+            <td>Audio縺ｯ豁｣隕丞喧WAV縺九ｉ蛟呵｣懷玄髢薙ｒ菴懊ｊ縲∝呵｣懊・繝・・繧貞・逅・ｸｭ縺縺台ｿ晄戟縺吶ｋ縲・/td>
+            <td>Video縺ｯ荳譎よｭ｣隕丞喧WAV繧定ｵｷ轤ｹ縺ｫ <code>ffmpeg silencedetect</code> 繧貞ｮ溯｡後＠縲∝呵｣懷玄髢薙ｒ讒矩蛹冶ｨｼ霍｡縺ｨ縺励※菫晏ｭ倥☆繧九・/td>
+            <td class="status ok">笳・/td>
             <td><code>trim_audio</code> / <code>run_silence_detect</code></td>
-            <td>なし。</td>
+            <td>縺ｪ縺励・/td>
           </tr>
           <tr>
             <td class="category">Audio</td>
-            <td>speaker diarizationモデル</td>
-            <td><code>pyannote/speaker-diarization-community-1</code> で機械的speaker turnを作る。</td>
-            <td>Videoも同じモデルIDを使う。依存とHugging Face tokenが揃うと実行される。</td>
-            <td class="status ok">○</td>
+            <td>speaker diarization繝｢繝・Ν</td>
+            <td><code>pyannote/speaker-diarization-community-1</code> 縺ｧ讖滓｢ｰ逧гpeaker turn繧剃ｽ懊ｋ縲・/td>
+            <td>Video繧ょ酔縺倥Δ繝・ΝID繧剃ｽｿ縺・ゆｾ晏ｭ倥→Hugging Face token縺梧純縺・→螳溯｡後＆繧後ｋ縲・/td>
+            <td class="status ok">笳・/td>
             <td><code>audio_models.py</code></td>
-            <td>なし。</td>
+            <td>縺ｪ縺励・/td>
           </tr>
           <tr>
             <td class="category">Audio</td>
-            <td>diarization必須性と失敗契約</td>
-            <td>Audioではdiarizationは必須。失敗時にfallback speakerを捏造しない。</td>
-            <td>Videoの既定は <code>required</code>。pyannote/faster-whisperが実行できない場合はmaster完成扱いにせず、fallback speakerやtranscript textを作らない。</td>
-            <td class="status ok">○</td>
+            <td>diarization蠢・域ｧ縺ｨ螟ｱ謨怜･醍ｴ・/td>
+            <td>Audio縺ｧ縺ｯdiarization縺ｯ蠢・医ょ､ｱ謨玲凾縺ｫfallback speaker繧呈刻騾縺励↑縺・・/td>
+            <td>Video縺ｮ譌｢螳壹・ <code>required</code>縲Ｑyannote/faster-whisper縺悟ｮ溯｡後〒縺阪↑縺・ｴ蜷医・master螳梧・謇ｱ縺・↓縺帙★縲’allback speaker繧дranscript text繧剃ｽ懊ｉ縺ｪ縺・・/td>
+            <td class="status ok">笳・/td>
             <td>Audio <code>docs/PIPELINE.md</code> / Video <code>audio_models.py</code></td>
-            <td>なし。</td>
+            <td>縺ｪ縺励・/td>
           </tr>
           <tr>
             <td class="category">Audio</td>
             <td>Whisper transcript</td>
-            <td><code>Systran/faster-whisper-large-v3</code> で読みやすい文字起こしを作る。</td>
-            <td>Videoは <code>faster_whisper_large_v3</code> を使い、<code>text</code> として保存する。</td>
-            <td class="status ok">○</td>
+            <td><code>Systran/faster-whisper-large-v3</code> 縺ｧ隱ｭ縺ｿ繧・☆縺・枚蟄苓ｵｷ縺薙＠繧剃ｽ懊ｋ縲・/td>
+            <td>Video縺ｯ <code>faster_whisper_large_v3</code> 繧剃ｽｿ縺・・code>text</code> 縺ｨ縺励※菫晏ｭ倥☆繧九・/td>
+            <td class="status ok">笳・/td>
             <td><code>audio_models.py</code>, <code>items.py</code></td>
-            <td>なし。</td>
+            <td>縺ｪ縺励・/td>
           </tr>
           <tr>
             <td class="category">Audio</td>
-            <td>Whisper textとspeaker割当</td>
-            <td>speaker turnとtimestamp overlapで発話者を推定する。</td>
-            <td>VideoはWhisper segmentの本文を変更せず、pyannoteのspeaker interval overlapでspeakerだけを付ける。</td>
-            <td class="status ok">○</td>
+            <td>Whisper text縺ｨspeaker蜑ｲ蠖・/td>
+            <td>speaker turn縺ｨtimestamp overlap縺ｧ逋ｺ隧ｱ閠・ｒ謗ｨ螳壹☆繧九・/td>
+            <td>Video縺ｯWhisper segment縺ｮ譛ｬ譁・ｒ螟画峩縺帙★縲｝yannote縺ｮspeaker interval overlap縺ｧspeaker縺縺代ｒ莉倥￠繧九・/td>
+            <td class="status ok">笳・/td>
             <td><code>run_whisper_transcription</code>, <code>speaker_assignment_for_interval</code></td>
-            <td>なし。</td>
+            <td>縺ｪ縺励・/td>
           </tr>
           <tr>
             <td class="category">Audio</td>
             <td>GPU fail-fast</td>
-            <td>Audio GPUはCUDAがなければCPUへ黙ってfallbackしない。</td>
-            <td>Videoも <code>computeMode: gpu</code> が既定。GPU worker、PyTorch CUDA、CTranslate2 CUDAが揃わなければ失敗し、CPUへ黙ってfallbackしない。</td>
-            <td class="status ok">○</td>
+            <td>Audio GPU縺ｯCUDA縺後↑縺代ｌ縺ｰCPU縺ｸ鮟吶▲縺ｦfallback縺励↑縺・・/td>
+            <td>Video繧・<code>computeMode: gpu</code> 縺梧里螳壹・PU worker縲￣yTorch CUDA縲，Translate2 CUDA縺梧純繧上↑縺代ｌ縺ｰ螟ｱ謨励＠縲，PU縺ｸ鮟吶▲縺ｦfallback縺励↑縺・・/td>
+            <td class="status ok">笳・/td>
             <td><code>docker-compose.gpu.yml</code>, <code>compute_runtime_status</code></td>
-            <td>なし。</td>
+            <td>縺ｪ縺励・/td>
           </tr>
           <tr>
             <td class="category">Audio</td>
-            <td>Whisper本文の保持</td>
-            <td>文字起こし本文を話者分離で劣化させない。</td>
-            <td>VideoはWhisperが出した <code>text</code> を正とし、話者分離の突き合わせで削除・短縮・再構成しない。</td>
-            <td class="status ok">○</td>
+            <td>Whisper譛ｬ譁・・菫晄戟</td>
+            <td>譁・ｭ苓ｵｷ縺薙＠譛ｬ譁・ｒ隧ｱ閠・・髮｢縺ｧ蜉｣蛹悶＆縺帙↑縺・・/td>
+            <td>Video縺ｯWhisper縺悟・縺励◆ <code>text</code> 繧呈ｭ｣縺ｨ縺励∬ｩｱ閠・・髮｢縺ｮ遯√″蜷医ｏ縺帙〒蜑企勁繝ｻ遏ｭ邵ｮ繝ｻ蜀肴ｧ区・縺励↑縺・・/td>
+            <td class="status ok">笳・/td>
             <td><code>audio_analysis.py</code>, Audio <code>docs/PIPELINE.md</code></td>
-            <td>なし。</td>
+            <td>縺ｪ縺励・/td>
           </tr>
           <tr>
             <td class="category">Audio</td>
-            <td>生成音声artifactとZIP除外</td>
-            <td>Audioはsource audioをZIPに含めない。</td>
-            <td>Videoはsource videoも生成MP3もZIPに含めない。生成MP3は <code>outputRoot</code> 配下のローカルレビュー用。</td>
-            <td class="status ok">○</td>
+            <td>逕滓・髻ｳ螢ｰartifact縺ｨZIP髯､螟・/td>
+            <td>Audio縺ｯsource audio繧短IP縺ｫ蜷ｫ繧√↑縺・・/td>
+            <td>Video縺ｯsource video繧ら函謌信P3繧・IP縺ｫ蜷ｫ繧√↑縺・ら函謌信P3縺ｯ <code>outputRoot</code> 驟堺ｸ九・繝ｭ繝ｼ繧ｫ繝ｫ繝ｬ繝薙Η繝ｼ逕ｨ縲・/td>
+            <td class="status ok">笳・/td>
             <td><code>items.py</code>, <code>docs/OUTPUTS.md</code></td>
-            <td>なし。</td>
+            <td>縺ｪ縺励・/td>
           </tr>
           <tr>
             <td class="category">Image</td>
-            <td>OCRエンジン</td>
-            <td>ImageはローカルTesseract <code>jpn+eng</code> を使い、外部画像APIを呼ばない。</td>
-            <td>Videoは生成フレームartifactに対してローカルTesseract <code>jpn+eng</code> を使う。</td>
-            <td class="status ok">○</td>
+            <td>OCR繧ｨ繝ｳ繧ｸ繝ｳ</td>
+            <td>Image縺ｯ繝ｭ繝ｼ繧ｫ繝ｫTesseract <code>jpn+eng</code> 繧剃ｽｿ縺・∝､夜Κ逕ｻ蜒就PI繧貞他縺ｰ縺ｪ縺・・/td>
+            <td>Video縺ｯ逕滓・繝輔Ξ繝ｼ繝artifact縺ｫ蟇ｾ縺励※繝ｭ繝ｼ繧ｫ繝ｫTesseract <code>jpn+eng</code> 繧剃ｽｿ縺・・/td>
+            <td class="status ok">笳・/td>
             <td>Image <code>ocr.py</code> / Video <code>frame_ocr.py</code></td>
-            <td>なし。</td>
+            <td>縺ｪ縺励・/td>
           </tr>
           <tr>
             <td class="category">Image</td>
-            <td>OCR公開フィールド</td>
-            <td><code>has_text</code>, <code>full_text</code>, <code>block_id</code>, <code>bbox_norm</code>, <code>confidence</code> を使う。</td>
-            <td>Videoの <code>frame_ocr.json</code> も同じ名前のsubpayloadを出す。</td>
-            <td class="status ok">○</td>
+            <td>OCR蜈ｬ髢九ヵ繧｣繝ｼ繝ｫ繝・/td>
+            <td><code>has_text</code>, <code>full_text</code>, <code>block_id</code>, <code>bbox_norm</code>, <code>confidence</code> 繧剃ｽｿ縺・・/td>
+            <td>Video縺ｮ <code>frame_ocr.json</code> 繧ょ酔縺伜錐蜑阪・subpayload繧貞・縺吶・/td>
+            <td class="status ok">笳・/td>
             <td><code>frame_ocr.py</code>, <code>docs/OUTPUTS.md</code></td>
-            <td>なし。</td>
+            <td>縺ｪ縺励・/td>
           </tr>
           <tr>
             <td class="category">Image</td>
-            <td>OCR auto失敗時の扱い</td>
-            <td>Imageのauto OCRは失敗時に空OCRとwarningsを返す。</td>
-            <td>Videoもautoでは空OCRとwarningを返し、source videoやsource frameを変更しない。</td>
-            <td class="status ok">○</td>
+            <td>OCR auto螟ｱ謨玲凾縺ｮ謇ｱ縺・/td>
+            <td>Image縺ｮauto OCR縺ｯ螟ｱ謨玲凾縺ｫ遨ｺOCR縺ｨwarnings繧定ｿ斐☆縲・/td>
+            <td>Video繧Ｂuto縺ｧ縺ｯ遨ｺOCR縺ｨwarning繧定ｿ斐＠縲《ource video繧гource frame繧貞､画峩縺励↑縺・・/td>
+            <td class="status ok">笳・/td>
             <td>Image <code>ocr.py</code> / Video <code>run_frame_ocr</code></td>
-            <td>なし。</td>
+            <td>縺ｪ縺励・/td>
           </tr>
           <tr>
             <td class="category">Image</td>
             <td>OCR debug overlay</td>
-            <td>ImageはOCR領域のdebug overlayを生成する。</td>
-            <td>Videoも <code>artifacts/ocr/*-ocr.jpg</code> を生成する。</td>
-            <td class="status ok">○</td>
+            <td>Image縺ｯOCR鬆伜沺縺ｮdebug overlay繧堤函謌舌☆繧九・/td>
+            <td>Video繧・<code>artifacts/ocr/*-ocr.jpg</code> 繧堤函謌舌☆繧九・/td>
+            <td class="status ok">笳・/td>
             <td><code>write_debug_overlay</code>, <code>docs/OUTPUTS.md</code></td>
-            <td>なし。</td>
+            <td>縺ｪ縺励・/td>
           </tr>
           <tr>
             <td class="category">Image</td>
             <td>brightness / contrast</td>
-            <td>ImageはPillowで輝度平均と標準偏差を取り、同じ閾値でdark/bright/low/highを判定する。</td>
-            <td>Videoも同じ計算と閾値を生成フレームに適用する。</td>
-            <td class="status ok">○</td>
+            <td>Image縺ｯPillow縺ｧ霈晏ｺｦ蟷ｳ蝮・→讓呎ｺ門￥蟾ｮ繧貞叙繧翫∝酔縺倬明蛟､縺ｧdark/bright/low/high繧貞愛螳壹☆繧九・/td>
+            <td>Video繧ょ酔縺倩ｨ育ｮ励→髢ｾ蛟､繧堤函謌舌ヵ繝ｬ繝ｼ繝縺ｫ驕ｩ逕ｨ縺吶ｋ縲・/td>
+            <td class="status ok">笳・/td>
             <td>Image <code>quality</code> / Video <code>frame_quality</code></td>
-            <td>なし。</td>
+            <td>縺ｪ縺励・/td>
           </tr>
           <tr>
             <td class="category">Image</td>
             <td>color palette</td>
-            <td>Imageは160px thumbnailを <code>MEDIANCUT</code> 量子化して最大8色のpaletteを作る。</td>
-            <td>Videoも160px thumbnailを <code>MEDIANCUT</code> 量子化して最大8色のpaletteを作る。</td>
-            <td class="status ok">○</td>
+            <td>Image縺ｯ160px thumbnail繧・<code>MEDIANCUT</code> 驥丞ｭ仙喧縺励※譛螟ｧ8濶ｲ縺ｮpalette繧剃ｽ懊ｋ縲・/td>
+            <td>Video繧・60px thumbnail繧・<code>MEDIANCUT</code> 驥丞ｭ仙喧縺励※譛螟ｧ8濶ｲ縺ｮpalette繧剃ｽ懊ｋ縲・/td>
+            <td class="status ok">笳・/td>
             <td>Image <code>color_palette</code> / Video <code>frame_color_palette</code></td>
-            <td>なし。</td>
+            <td>縺ｪ縺励・/td>
           </tr>
           <tr>
             <td class="category">Image</td>
             <td>3x3 color grid</td>
-            <td>Imageは3x3 gridで <code>cell_id</code>, <code>row</code>, <code>col</code>, <code>bbox_norm</code>, <code>average_color</code> を出す。</td>
-            <td>Videoも3x3 gridで <code>cell_id</code>, <code>row</code>, <code>col</code>, <code>bbox_norm</code>, <code>average_color</code> を出す。</td>
-            <td class="status ok">○</td>
+            <td>Image縺ｯ3x3 grid縺ｧ <code>cell_id</code>, <code>row</code>, <code>col</code>, <code>bbox_norm</code>, <code>average_color</code> 繧貞・縺吶・/td>
+            <td>Video繧・x3 grid縺ｧ <code>cell_id</code>, <code>row</code>, <code>col</code>, <code>bbox_norm</code>, <code>average_color</code> 繧貞・縺吶・/td>
+            <td class="status ok">笳・/td>
             <td>Image <code>color_grid</code> / Video <code>frame_color_grid</code></td>
-            <td>なし。</td>
+            <td>縺ｪ縺励・/td>
           </tr>
           <tr>
             <td class="category">Safety</td>
-            <td>source fileの扱い</td>
-            <td>Audio/Imageはsourceを編集せず、生成物だけをoutputRootに置く。</td>
-            <td>Videoもsource videoを変更・削除・コピーせず、生成物だけを <code>outputRoot</code> 配下へ置く。</td>
-            <td class="status ok">○</td>
+            <td>source file縺ｮ謇ｱ縺・/td>
+            <td>Audio/Image縺ｯsource繧堤ｷｨ髮・○縺壹∫函謌千黄縺縺代ｒoutputRoot縺ｫ鄂ｮ縺上・/td>
+            <td>Video繧Ｔource video繧貞､画峩繝ｻ蜑企勁繝ｻ繧ｳ繝斐・縺帙★縲∫函謌千黄縺縺代ｒ <code>outputRoot</code> 驟堺ｸ九∈鄂ｮ縺上・/td>
+            <td class="status ok">笳・/td>
             <td><code>docs/SAFETY.md</code>, <code>docs/OUTPUTS.md</code></td>
-            <td>継続してテスト対象にする。</td>
+            <td>邯咏ｶ壹＠縺ｦ繝・せ繝亥ｯｾ雎｡縺ｫ縺吶ｋ縲・/td>
           </tr>
           <tr>
             <td class="category">Safety</td>
-            <td>外部API / 人物認識 / 顔認識</td>
-            <td>Imageは外部画像APIを呼ばず、人物認識もしない。Audioはモデル実行以外の外部解析APIを前提にしない。</td>
-            <td>VideoもOCR、pyannote、faster-whisper以外のscene detection、OCR外API、人物/顔認識、外部解析APIを実装していない。</td>
-            <td class="status ok">○</td>
+            <td>螟夜ΚAPI / 莠ｺ迚ｩ隱崎ｭ・/ 鬘碑ｪ崎ｭ・/td>
+            <td>Image縺ｯ螟夜Κ逕ｻ蜒就PI繧貞他縺ｰ縺壹∽ｺｺ迚ｩ隱崎ｭ倥ｂ縺励↑縺・・udio縺ｯ繝｢繝・Ν螳溯｡御ｻ･螟悶・螟夜Κ隗｣譫植PI繧貞燕謠舌↓縺励↑縺・・/td>
+            <td>Video繧０CR縲｝yannote縲’aster-whisper莉･螟悶・scene detection縲＾CR螟泡PI縲∽ｺｺ迚ｩ/鬘碑ｪ崎ｭ倥∝､夜Κ隗｣譫植PI繧貞ｮ溯｣・＠縺ｦ縺・↑縺・・/td>
+            <td class="status ok">笳・/td>
             <td><code>model_inventory.py</code>, docs</td>
-            <td>なし。</td>
+            <td>縺ｪ縺励・/td>
           </tr>
           <tr>
             <td class="category">Runtime</td>
-            <td>常駐worker</td>
-            <td>Audio/ImageはDocker-firstのworker/CLI製品として動く。</td>
-            <td>Videoの <code>timeline-for-video-worker-1</code> は現在 <code>Up</code> かつ <code>healthy</code>。<code>serve</code> が定期refresh loopを持つ。</td>
-            <td class="status ok">○</td>
+            <td>蟶ｸ鬧陣orker</td>
+            <td>Audio/Image縺ｯDocker-first縺ｮworker/CLI陬ｽ蜩√→縺励※蜍輔￥縲・/td>
+            <td>Video縺ｮ <code>timeline-for-video-worker-1</code> 縺ｯ迴ｾ蝨ｨ <code>Up</code> 縺九▽ <code>healthy</code>縲・code>serve</code> 縺悟ｮ壽悄refresh loop繧呈戟縺､縲・/td>
+            <td class="status ok">笳・/td>
             <td><code>docker compose ps</code>, <code>processor.py</code></td>
-            <td>なし。</td>
+            <td>縺ｪ縺励・/td>
           </tr>
           <tr>
             <td class="category">Runtime</td>
-            <td>実動画での現在処理状態</td>
-            <td>参照製品は対象ファイルをmaster artifactへ変換する。</td>
-            <td>Videoは常駐workerと <code>items refresh</code> でmaster artifactを作る。pipeline version更新により、既存itemも新しいAudio/Image parity契約で再処理対象になる。</td>
-            <td class="status ok">○</td>
-            <td><code>C:\TimelineData\video\items</code> 実測</td>
-            <td>全件処理の完了待ちは運用進捗として別管理。</td>
+            <td>螳溷虚逕ｻ縺ｧ縺ｮ迴ｾ蝨ｨ蜃ｦ逅・憾諷・/td>
+            <td>蜿ら・陬ｽ蜩√・蟇ｾ雎｡繝輔ぃ繧､繝ｫ繧知aster artifact縺ｸ螟画鋤縺吶ｋ縲・/td>
+            <td>Video縺ｯ蟶ｸ鬧陣orker縺ｨ <code>items refresh</code> 縺ｧmaster artifact繧剃ｽ懊ｋ縲Ｑipeline version譖ｴ譁ｰ縺ｫ繧医ｊ縲∵里蟄亙tem繧よ眠縺励＞Audio/Image parity螂醍ｴ・〒蜀榊・逅・ｯｾ雎｡縺ｫ縺ｪ繧九・/td>
+            <td class="status ok">笳・/td>
+            <td><code>C:\TimelineData\video\items</code> 螳滓ｸｬ</td>
+            <td>蜈ｨ莉ｶ蜃ｦ逅・・螳御ｺ・ｾ・■縺ｯ驕狗畑騾ｲ謐励→縺励※蛻･邂｡逅・・/td>
           </tr>
           <tr>
             <td class="category">Runtime</td>
-            <td>一覧CLIのページング</td>
-            <td>Audio/Imageは一覧UI向けに <code>--page</code> / <code>--page-size</code> を持つ。</td>
-            <td>Videoも <code>files list</code>, <code>items list</code>, <code>runs list</code> で <code>--page</code> / <code>--page-size</code> を受け付け、JSONに <code>pagination</code> を返す。</td>
-            <td class="status ok">○</td>
-            <td><code>cli.py</code>, <code>test_cli.py</code></td>
-            <td>なし。</td>
+            <td>荳隕ｧCLI縺ｮ繝壹・繧ｸ繝ｳ繧ｰ</td>
+            <td>Audio/Image縺ｯ荳隕ｧUI蜷代￠縺ｫ <code>--page</code> / <code>--page-size</code> 繧呈戟縺､縲・/td>
+            <td>Video繧・<code>files list</code>, <code>items list</code>, <code>runs list</code> 縺ｧ <code>--page</code> / <code>--page-size</code> 繧貞女縺台ｻ倥￠縲゛SON縺ｫ <code>pagination</code> 繧定ｿ斐☆縲・/td>
+            <td class="status ok">笳・/td>
+            <td><code>commands.py</code>, <code>test_commands.py</code></td>
+            <td>縺ｪ縺励・/td>
           </tr>
           <tr>
             <td class="category">Repo</td>
-            <td>コード共有・import禁止</td>
-            <td>Audio/Imageの機能をVideoにも実装するが、ソース共有はしない。</td>
-            <td>Video workerは独立実装。Audio/Image packageをimportしていない。</td>
-            <td class="status ok">○</td>
-            <td>参照調査とVideo import確認</td>
-            <td>なし。</td>
+            <td>繧ｳ繝ｼ繝牙・譛峨・import遖∵ｭ｢</td>
+            <td>Audio/Image縺ｮ讖溯・繧歎ideo縺ｫ繧ょｮ溯｣・☆繧九′縲√た繝ｼ繧ｹ蜈ｱ譛峨・縺励↑縺・・/td>
+            <td>Video worker縺ｯ迢ｬ遶句ｮ溯｣・・udio/Image package繧段mport縺励※縺・↑縺・・/td>
+            <td class="status ok">笳・/td>
+            <td>蜿ら・隱ｿ譟ｻ縺ｨVideo import遒ｺ隱・/td>
+            <td>縺ｪ縺励・/td>
           </tr>
           <tr>
             <td class="category">Output</td>
-            <td>master artifact構造</td>
-            <td>Audio/Imageはsource別itemに <code>timeline.json</code>, <code>convert_info.json</code>, record JSONを置く。</td>
-            <td>Videoは <code>video_record.json</code>, <code>timeline.json</code>, <code>convert_info.json</code>, raw_outputs, artifactsを <code>outputRoot/items/&lt;item-id&gt;</code> に置く。</td>
-            <td class="status ok">○</td>
+            <td>master artifact讒矩</td>
+            <td>Audio/Image縺ｯsource蛻･item縺ｫ <code>timeline.json</code>, <code>convert_info.json</code>, record JSON繧堤ｽｮ縺上・/td>
+            <td>Video縺ｯ <code>video_record.json</code>, <code>timeline.json</code>, <code>convert_info.json</code>, raw_outputs, artifacts繧・<code>outputRoot/items/&lt;item-id&gt;</code> 縺ｫ鄂ｮ縺上・/td>
+            <td class="status ok">笳・/td>
             <td><code>docs/OUTPUTS.md</code></td>
-            <td>なし。</td>
+            <td>縺ｪ縺励・/td>
           </tr>
         </tbody>
       </table>
     </section>
 
     <section class="panel">
-      <h2>完了した一致化</h2>
+      <h2>螳御ｺ・＠縺滉ｸ閾ｴ蛹・/h2>
       <ul class="todo-list">
-        <li><strong>Audio:</strong> 一時正規化WAVをモデル入力にし、レビュー用MP3をpyannote/faster-whisper入力から外した。</li>
-        <li><strong>Audio:</strong> speech candidate検出を正規化WAV起点にした。</li>
-        <li><strong>Audio:</strong> Whisper本文を保持し、speaker labelだけをpyannoteのoverlapで付与するようにした。</li>
-        <li><strong>Audio:</strong> pyannote/faster-whisperの既定動作を必須にした。</li>
-        <li><strong>GPU:</strong> <code>computeMode</code> の既定を <code>gpu</code> にし、Audio互換モデルはCPUへ黙ってfallbackしないようにした。</li>
-        <li><strong>CLI:</strong> <code>files list</code>, <code>items list</code>, <code>runs list</code> にページングを追加した。</li>
-        <li><strong>Image:</strong> palette量子化を <code>Image.Quantize.MEDIANCUT</code> に揃えた。</li>
-        <li><strong>Image:</strong> 3x3 gridに <code>cell_id</code> を追加した。</li>
-        <li><strong>Docs:</strong> README、Runtime、Pipeline、Output contractを新しい処理契約に合わせた。</li>
+        <li><strong>Audio:</strong> 荳譎よｭ｣隕丞喧WAV繧偵Δ繝・Ν蜈･蜉帙↓縺励√Ξ繝薙Η繝ｼ逕ｨMP3繧恥yannote/faster-whisper蜈･蜉帙°繧牙､悶＠縺溘・/li>
+        <li><strong>Audio:</strong> speech candidate讀懷・繧呈ｭ｣隕丞喧WAV襍ｷ轤ｹ縺ｫ縺励◆縲・/li>
+        <li><strong>Audio:</strong> Whisper譛ｬ譁・ｒ菫晄戟縺励《peaker label縺縺代ｒpyannote縺ｮoverlap縺ｧ莉倅ｸ弱☆繧九ｈ縺・↓縺励◆縲・/li>
+        <li><strong>Audio:</strong> pyannote/faster-whisper縺ｮ譌｢螳壼虚菴懊ｒ蠢・医↓縺励◆縲・/li>
+        <li><strong>GPU:</strong> <code>computeMode</code> 縺ｮ譌｢螳壹ｒ <code>gpu</code> 縺ｫ縺励、udio莠呈鋤繝｢繝・Ν縺ｯCPU縺ｸ鮟吶▲縺ｦfallback縺励↑縺・ｈ縺・↓縺励◆縲・/li>
+        <li><strong>Worker command:</strong> <code>files list</code>, <code>items list</code>, <code>runs list</code> 縺ｫ繝壹・繧ｸ繝ｳ繧ｰ繧定ｿｽ蜉縺励◆縲・/li>
+        <li><strong>Image:</strong> palette驥丞ｭ仙喧繧・<code>Image.Quantize.MEDIANCUT</code> 縺ｫ謠・∴縺溘・/li>
+        <li><strong>Image:</strong> 3x3 grid縺ｫ <code>cell_id</code> 繧定ｿｽ蜉縺励◆縲・/li>
+        <li><strong>Docs:</strong> README縲ヽuntime縲￣ipeline縲＾utput contract繧呈眠縺励＞蜃ｦ逅・･醍ｴ・↓蜷医ｏ縺帙◆縲・/li>
       </ul>
     </section>
 
     <section class="panel">
-      <h2>最小参照ファイル</h2>
+      <h2>譛蟆丞盾辣ｧ繝輔ぃ繧､繝ｫ</h2>
       <ul class="sources">
         <li><code>C:\apps\TimelineForAudio\docs\PIPELINE.md</code></li>
         <li><code>C:\apps\TimelineForAudio\docs\RUNTIME.md</code></li>

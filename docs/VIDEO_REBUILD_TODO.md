@@ -19,7 +19,7 @@ Target video input roots:
 - [x] Expand Image parity beyond OCR into frame-level visual features.
 - [x] Add GPU worker flavor for Video audio models, matching Audio's CPU/GPU split.
 - [x] Add item-selected download/remove options.
-- [x] Add `--page` / `--page-size` to list-style CLI commands for Timeline UI integration.
+- [x] Add `--page` / `--page-size` to list-style worker commands for Timeline UI integration.
 - [x] Run Docker build and resident-worker smoke check after this change set.
 - [x] Do final source-safety and ZIP exclusion validation.
 

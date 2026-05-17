@@ -27,7 +27,7 @@ or copied as a common implementation.
 
 Build:
 
-- Windows-friendly local CLI
+- Windows-friendly local API
 - Docker-first runtime
 - settings for input roots and output root
 - video file discovery from files and directories
@@ -76,7 +76,7 @@ Keep the first product small and rebuildable:
 
 - one repo
 - one worker package
-- one CLI surface
+- one worker command surface behind the API
 - clear JSON outputs
 - generated artifacts separated from source videos
 - direct smoke test path

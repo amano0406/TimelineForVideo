@@ -86,7 +86,7 @@ POST /models/list
 
 `GET /health` is implemented in C#/.NET and returns the plain text value
 `true` or `false`. Operation routes invoke the Docker worker directly from C#
-and do not call host CLI launchers. API calls do not start Docker implicitly.
+and do not call host launchers. API calls do not start Docker implicitly.
 
 ## Output JSON
 
@@ -160,7 +160,7 @@ commands. `activity map` writes `raw_outputs/activity_map.json` with merged
 audio activity, five-minute visual sentinel deltas, and inactive intervals that
 can be skipped because no useful source signal was found. `process all` forces the same
 pipeline over the selected batch. `serve` runs the changed-video refresh loop
-continuously when explicitly invoked from the CLI; it is not the Docker
+continuously when explicitly invoked as a worker command; it is not the Docker
 container's default startup command.
 
 `POST /files/list` and `POST /items/list` accept `page` and `pageSize` for

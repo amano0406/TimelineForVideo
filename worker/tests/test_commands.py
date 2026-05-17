@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import contextlib
 import io
@@ -11,7 +11,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from timeline_for_video_worker.cli import main
+from timeline_for_video_worker.commands import main
 
 
 FFPROBE_FIXTURE = {
@@ -147,7 +147,7 @@ def run_json(args: list[str], env: dict[str, str] | None = None) -> tuple[int, d
     return exit_code, json.loads(output.getvalue())
 
 
-class CliTests(unittest.TestCase):
+class CommandTests(unittest.TestCase):
     def test_health_json(self) -> None:
         exit_code, payload = run_json(["health", "--json"])
 

@@ -106,7 +106,7 @@ troubleshooting, but that mode is not a settings field and is not persisted.
 
 The token can be stored in local `settings.json` with `settings save --token`
 or provided through `TIMELINE_FOR_VIDEO_HUGGING_FACE_TOKEN`,
-`HUGGING_FACE_HUB_TOKEN`, or `HF_TOKEN`. JSON CLI output redacts the token.
+`HUGGING_FACE_HUB_TOKEN`, or `HF_TOKEN`. JSON command output redacts the token.
 
 ## Current Components
 

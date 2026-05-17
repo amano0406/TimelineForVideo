@@ -12,7 +12,7 @@ dependencies = [
 ]
 
 [project.scripts]
-timeline-for-video = "timeline_for_video_worker.cli:main"
+timeline-for-video = "timeline_for_video_worker.commands:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
