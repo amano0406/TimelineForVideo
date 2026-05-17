@@ -14,7 +14,7 @@ from .items import download_items
 from .items import list_items
 from .items import remove_items
 from .model_inventory import build_model_inventory
-from .operations import paginate_rows
+from .pagination import paginate_rows
 from .processor import refresh_configured_items
 from .sampling import DEFAULT_SAMPLES_PER_VIDEO
 from .settings import PRODUCT_NAME

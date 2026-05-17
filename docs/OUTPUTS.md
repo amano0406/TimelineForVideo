@@ -755,12 +755,12 @@ Merged activity map used to identify useful intervals and skippable intervals.
 }
 ```
 
-## Worker Command JSON Results
+## Local API JSON Results
 
-Worker operations return JSON envelopes when `--json` is passed. These are operation
-results, not necessarily durable item files.
+The worker-hosted local API returns JSON envelopes for Timeline integration.
+These are API results, not necessarily durable item files.
 
-### `items refresh --json`
+### `POST /items/refresh`
 
 ```json
 {
@@ -801,7 +801,7 @@ results, not necessarily durable item files.
 }
 ```
 
-### `items list --json`
+### `POST /items/list`
 
 ```json
 {
@@ -864,7 +864,7 @@ results, not necessarily durable item files.
 }
 ```
 
-### `items download --json`
+### `POST /items/download`
 
 ```json
 {
@@ -921,7 +921,7 @@ results, not necessarily durable item files.
 }
 ```
 
-### `items remove --json`
+### `POST /items/remove`
 
 ```json
 {
@@ -956,13 +956,13 @@ results, not necessarily durable item files.
 }
 ```
 
-`items remove` removes generated files under `outputRoot`; it does not delete
+`POST /items/remove` removes generated files under `outputRoot`; it does not delete
 source videos. It also targets temporary generated `.processing` files under
 item artifact directories.
 
 ## Worker Run Result
 
-`process all --json` and `serve --once --json` return a worker run envelope.
+The resident worker pipeline returns a worker run envelope.
 Completed runs are also stored in the internal app-data volume, not under
 `outputRoot`.
 
