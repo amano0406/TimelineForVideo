@@ -164,7 +164,7 @@ def build_parser() -> argparse.ArgumentParser:
     doctor_parser.set_defaults(handler=handle_doctor)
 
     files_parser = subparsers.add_parser("files", help="Inspect source video files.")
-    files_subparsers = files_parser.add_subparsers(dest="files_command", required=True)
+    files_subparsers = files_parser.add_subparsers(dest="files_operation", required=True)
 
     files_list_parser = files_subparsers.add_parser("list", help="List configured video files.")
     files_list_parser.add_argument("--page", type=positive_int, default=None, help="Return one result page.")
@@ -173,7 +173,7 @@ def build_parser() -> argparse.ArgumentParser:
     files_list_parser.set_defaults(handler=handle_files_list)
 
     probe_parser = subparsers.add_parser("probe", help="Read source video metadata with ffprobe.")
-    probe_subparsers = probe_parser.add_subparsers(dest="probe_command", required=True)
+    probe_subparsers = probe_parser.add_subparsers(dest="probe_operation", required=True)
 
     probe_list_parser = probe_subparsers.add_parser("list", help="Probe configured video files.")
     probe_list_parser.add_argument("--ffprobe-bin", default="ffprobe", help="ffprobe command path.")
@@ -182,7 +182,7 @@ def build_parser() -> argparse.ArgumentParser:
     probe_list_parser.set_defaults(handler=handle_probe_list)
 
     sample_parser = subparsers.add_parser("sample", help="Extract bounded review frames.")
-    sample_subparsers = sample_parser.add_subparsers(dest="sample_command", required=True)
+    sample_subparsers = sample_parser.add_subparsers(dest="sample_operation", required=True)
 
     sample_frames_parser = sample_subparsers.add_parser("frames", help="Extract bounded frame samples.")
     sample_frames_parser.add_argument("--ffprobe-bin", default="ffprobe", help="ffprobe command path.")
@@ -203,7 +203,7 @@ def build_parser() -> argparse.ArgumentParser:
     sample_frames_parser.set_defaults(handler=handle_sample_frames)
 
     ocr_parser = subparsers.add_parser("ocr", help="Run local OCR over generated frame samples.")
-    ocr_subparsers = ocr_parser.add_subparsers(dest="ocr_command", required=True)
+    ocr_subparsers = ocr_parser.add_subparsers(dest="ocr_operation", required=True)
 
     ocr_frames_parser = ocr_subparsers.add_parser("frames", help="OCR generated frame samples.")
     ocr_frames_parser.add_argument("--max-items", type=int, default=None, help="Limit item folders.")
@@ -217,7 +217,7 @@ def build_parser() -> argparse.ArgumentParser:
     ocr_frames_parser.set_defaults(handler=handle_ocr_frames)
 
     audio_parser = subparsers.add_parser("audio", help="Analyze source-video audio as generated evidence.")
-    audio_subparsers = audio_parser.add_subparsers(dest="audio_command", required=True)
+    audio_subparsers = audio_parser.add_subparsers(dest="audio_operation", required=True)
 
     audio_analyze_parser = audio_subparsers.add_parser("analyze", help="Extract MP3 derivative and speech ranges.")
     audio_analyze_parser.add_argument("--ffprobe-bin", default="ffprobe", help="ffprobe command path.")
@@ -233,7 +233,7 @@ def build_parser() -> argparse.ArgumentParser:
     audio_analyze_parser.set_defaults(handler=handle_audio_analyze)
 
     activity_parser = subparsers.add_parser("activity", help="Build source-safe activity maps.")
-    activity_subparsers = activity_parser.add_subparsers(dest="activity_command", required=True)
+    activity_subparsers = activity_parser.add_subparsers(dest="activity_operation", required=True)
 
     activity_map_parser = activity_subparsers.add_parser("map", help="Build activity maps from audio and visual sentinels.")
     activity_map_parser.add_argument("--ffprobe-bin", default="ffprobe", help="ffprobe command path.")
@@ -243,7 +243,7 @@ def build_parser() -> argparse.ArgumentParser:
     activity_map_parser.set_defaults(handler=handle_activity_map)
 
     process_parser = subparsers.add_parser("process", help="Run sampling, OCR, audio, activity mapping, and item refresh.")
-    process_subparsers = process_parser.add_subparsers(dest="process_command", required=True)
+    process_subparsers = process_parser.add_subparsers(dest="process_operation", required=True)
 
     process_all_parser = process_subparsers.add_parser("all", help="Run the full local video evidence pipeline.")
     process_all_parser.add_argument("--ffprobe-bin", default="ffprobe", help="ffprobe command path.")
@@ -276,7 +276,7 @@ def build_parser() -> argparse.ArgumentParser:
     process_all_parser.set_defaults(handler=handle_process_all)
 
     models_parser = subparsers.add_parser("models", help="Inspect local and reference processing components.")
-    models_subparsers = models_parser.add_subparsers(dest="models_command", required=True)
+    models_subparsers = models_parser.add_subparsers(dest="models_operation", required=True)
 
     models_list_parser = models_subparsers.add_parser("list", help="List processing components.")
     models_list_parser.add_argument(
@@ -293,7 +293,7 @@ def build_parser() -> argparse.ArgumentParser:
     models_list_parser.set_defaults(handler=handle_models_list)
 
     items_parser = subparsers.add_parser("items", help="Refresh and list item records.")
-    items_subparsers = items_parser.add_subparsers(dest="items_command", required=True)
+    items_subparsers = items_parser.add_subparsers(dest="items_operation", required=True)
 
     items_refresh_parser = items_subparsers.add_parser("refresh", help="Process changed video items.")
     items_refresh_parser.add_argument("--ffprobe-bin", default="ffprobe", help="ffprobe command path.")
@@ -334,7 +334,7 @@ def build_parser() -> argparse.ArgumentParser:
     items_remove_parser.set_defaults(handler=handle_items_remove)
 
     runs_parser = subparsers.add_parser("runs", help="Inspect worker runs.")
-    runs_subparsers = runs_parser.add_subparsers(dest="runs_command", required=True)
+    runs_subparsers = runs_parser.add_subparsers(dest="runs_operation", required=True)
     runs_list_parser = runs_subparsers.add_parser("list", help="List worker runs.")
     runs_list_parser.add_argument("--limit", type=int, default=None, help="Limit returned runs.")
     runs_list_parser.add_argument("--page", type=positive_int, default=None, help="Return one result page.")
@@ -387,7 +387,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     settings_parser = subparsers.add_parser("settings", help="Manage local settings.")
     settings_subparsers = settings_parser.add_subparsers(
-        dest="settings_command",
+        dest="settings_operation",
         required=True,
     )
 
