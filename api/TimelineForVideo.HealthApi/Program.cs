@@ -12,7 +12,7 @@ var bindPort = string.IsNullOrWhiteSpace(bindPortArg)
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSingleton(productPaths);
-builder.Services.AddSingleton<ProductCommandRunner>();
+builder.Services.AddSingleton<ProductOperationRunner>();
 if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ASPNETCORE_URLS")))
 {
     builder.WebHost.UseUrls($"http://127.0.0.1:{bindPort}");
@@ -37,7 +37,7 @@ var settings = app.MapGroup("/settings");
 
 settings.MapPost("/init", async (
     HttpContext context,
-    ProductCommandRunner runner,
+    ProductOperationRunner runner,
     CancellationToken cancellationToken) =>
 {
     return await ExecuteJsonEndpointAsync(async () =>
@@ -52,7 +52,7 @@ settings.MapPost("/init", async (
 
 settings.MapPost("/status", async (
     HttpContext context,
-    ProductCommandRunner runner,
+    ProductOperationRunner runner,
     CancellationToken cancellationToken) =>
 {
     return await ExecuteJsonEndpointAsync(async () =>
@@ -67,7 +67,7 @@ settings.MapPost("/status", async (
 
 settings.MapPost("/save", async (
     HttpContext context,
-    ProductCommandRunner runner,
+    ProductOperationRunner runner,
     CancellationToken cancellationToken) =>
 {
     return await ExecuteJsonEndpointAsync(async () =>
@@ -84,7 +84,7 @@ var files = app.MapGroup("/files");
 
 files.MapPost("/list", async (
     HttpContext context,
-    ProductCommandRunner runner,
+    ProductOperationRunner runner,
     CancellationToken cancellationToken) =>
 {
     return await ExecuteJsonEndpointAsync(async () =>
@@ -101,7 +101,7 @@ var items = app.MapGroup("/items");
 
 items.MapPost("/list", async (
     HttpContext context,
-    ProductCommandRunner runner,
+    ProductOperationRunner runner,
     CancellationToken cancellationToken) =>
 {
     return await ExecuteJsonEndpointAsync(async () =>
@@ -116,7 +116,7 @@ items.MapPost("/list", async (
 
 items.MapPost("/refresh", async (
     HttpContext context,
-    ProductCommandRunner runner,
+    ProductOperationRunner runner,
     CancellationToken cancellationToken) =>
 {
     return await ExecuteJsonEndpointAsync(async () =>
@@ -131,7 +131,7 @@ items.MapPost("/refresh", async (
 
 items.MapPost("/download", async (
     HttpContext context,
-    ProductCommandRunner runner,
+    ProductOperationRunner runner,
     CancellationToken cancellationToken) =>
 {
     return await ExecuteJsonEndpointAsync(async () =>
@@ -146,7 +146,7 @@ items.MapPost("/download", async (
 
 items.MapPost("/remove", async (
     HttpContext context,
-    ProductCommandRunner runner,
+    ProductOperationRunner runner,
     CancellationToken cancellationToken) =>
 {
     return await ExecuteJsonEndpointAsync(async () =>
@@ -163,7 +163,7 @@ var models = app.MapGroup("/models");
 
 models.MapPost("/list", async (
     HttpContext context,
-    ProductCommandRunner runner,
+    ProductOperationRunner runner,
     CancellationToken cancellationToken) =>
 {
     return await ExecuteJsonEndpointAsync(async () =>
@@ -702,11 +702,11 @@ internal sealed class ProductCommandException : Exception
     public string Stderr { get; }
 }
 
-internal sealed class ProductCommandRunner
+internal sealed class ProductOperationRunner
 {
     private readonly ProductPaths _paths;
 
-    public ProductCommandRunner(ProductPaths paths)
+    public ProductOperationRunner(ProductPaths paths)
     {
         _paths = paths;
     }
@@ -769,7 +769,7 @@ internal sealed class ProductCommandRunner
 
         if (payload is null)
         {
-            throw new InvalidOperationException("TimelineForVideo command did not return JSON.");
+            throw new InvalidOperationException("TimelineForVideo operation did not return JSON.");
         }
 
         return payload;
@@ -835,7 +835,7 @@ internal sealed class ProductCommandRunner
         return arguments;
     }
 
-    private static async Task<CommandResult> RunProcessAsync(
+    private static async Task<OperationResult> RunProcessAsync(
         string fileName,
         IReadOnlyList<string> arguments,
         string workingDirectory,
@@ -891,7 +891,7 @@ internal sealed class ProductCommandRunner
 
         var stdout = await stdoutTask;
         var stderr = await stderrTask;
-        return new CommandResult(process.ExitCode, stdout, stderr);
+        return new OperationResult(process.ExitCode, stdout, stderr);
     }
 
     private static void KillProcessTree(Process process)
@@ -994,7 +994,7 @@ internal sealed class ProductCommandRunner
     }
 }
 
-internal sealed record CommandResult(int ExitCode, string Stdout, string Stderr);
+internal sealed record OperationResult(int ExitCode, string Stdout, string Stderr);
 
 internal sealed record WorkerState(bool IsRunning, string Message);
 
