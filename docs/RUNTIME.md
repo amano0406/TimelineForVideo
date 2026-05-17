@@ -34,7 +34,7 @@ instance.
 
 The Docker service stays alive as the worker API process. `serve` still exists
 as the resident worker loop, but it is manual: it loads `settings.json`,
-processes changed videos with the same pipeline as `items refresh`, records run
+processes changed videos with the same pipeline as `POST /items/refresh`, records run
 status, then sleeps until the next interval. The compose default sets
 `TIMELINE_FOR_VIDEO_WORKER_MAX_ITEMS=1`, so manual `serve` processing advances
 one changed item per cycle unless the operator explicitly raises or clears that
@@ -48,7 +48,7 @@ When `settings.json` has `"computeMode": "gpu"`, `start.ps1` and the local API a
 uses `docker/worker.gpu.Dockerfile`, requests all available GPUs, and installs
 GPU audio-model dependencies. The default CPU compose file remains the base
 configuration, but CPU mode must be explicitly selected with
-`settings save --compute-mode cpu`.
+`POST /settings/save` with `computeMode: "cpu"`.
 
 GPU mode is fail-fast. If the running worker is the CPU flavor, CUDA is not
 visible to PyTorch, or ONNX Runtime does not expose `CUDAExecutionProvider`,
@@ -99,21 +99,21 @@ normalized WAV, runs speech candidate detection on that WAV, and then runs the
 pyannote/faster-whisper model path on the same WAV. The temporary WAV is
 removed after the item is processed and is not a master artifact.
 Audio model execution is required by default; the item fails when pyannote or
-faster-whisper cannot run. Diagnostic operations can still pass
+faster-whisper cannot run. Diagnostic API requests can still pass
 `--audio-model-mode auto` or `--audio-model-mode off` for isolated
 troubleshooting, but that mode is not a settings field and is not persisted.
 
-The token can be stored in local `settings.json` with `settings save --token`
+The token can be stored in local `settings.json` with `POST /settings/save`
 or provided through `TIMELINE_FOR_VIDEO_HUGGING_FACE_TOKEN`,
-`HUGGING_FACE_HUB_TOKEN`, or `HF_TOKEN`. JSON operation output redacts the token.
+`HUGGING_FACE_HUB_TOKEN`, or `HF_TOKEN`. JSON API output redacts the token.
 
 ## Current Components
 
-`models list` reports the current execution inventory. Its top-level `models`
+`POST /models/list` reports the current execution inventory. Its top-level `models`
 array and `pipeline.generation_signature` follow TimelineForAudio's model
 inventory shape for parent-product license/access display. The top-level
-`components` array keeps Video-specific runtime readiness details. `models list
---include-remote --json` fetches Hugging Face metadata such as license, gated
+`components` array keeps Video-specific runtime readiness details. `POST /models/list`
+with `includeRemote` fetches Hugging Face metadata such as license, gated
 status, and model-card URL.
 
 | Component | Current model / backend | Execution |

@@ -46,11 +46,11 @@ def handle_request(method: str, path: str, request: dict[str, Any] | None) -> tu
         if route == "/items/list":
             return HTTPStatus.OK, items_list_payload(payload)
         if route == "/items/refresh":
-            return status_for_operation_payload(items_refresh_payload(payload))
+            return status_for_api_payload(items_refresh_payload(payload))
         if route == "/items/download":
-            return status_for_operation_payload(items_download_payload(payload))
+            return status_for_api_payload(items_download_payload(payload))
         if route == "/items/remove":
-            return status_for_operation_payload(items_remove_payload(payload))
+            return status_for_api_payload(items_remove_payload(payload))
         if route == "/models/list":
             return HTTPStatus.OK, models_list_payload(payload)
     except Exception as exc:
@@ -242,7 +242,7 @@ def models_list_payload(request: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
-def status_for_operation_payload(payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+def status_for_api_payload(payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
     status = HTTPStatus.OK if payload.get("ok") is not False else HTTPStatus.INTERNAL_SERVER_ERROR
     return status, payload
 

@@ -297,8 +297,8 @@
           <tr>
             <td class="category">Audio</td>
             <td>繝｢繝・Ν繝ｻ萓晏ｭ倥・譽壼査縺・/td>
-            <td><code>models list</code> 縺ｧ pyannote縲’aster-whisper縲：Fmpeg縲；PU譚｡莉ｶ繧堤｢ｺ隱阪〒縺阪ｋ縲・/td>
-            <td>Video縺ｮ <code>models list --json</code> 縺ｯAudio莠呈鋤縺ｮ <code>models</code> 驟榊・縲・code>pipeline.generation_signature</code>縲〃ideo蝗ｺ譛峨・ <code>components</code> 驟榊・繧定ｿ斐☆縲・code>--include-remote</code> 縺ｧHugging Face縺ｮlicense/gated諠・ｱ繧ょ叙蠕励〒縺阪ｋ縲・/td>
+            <td><code>POST /models/list</code> 縺ｧ pyannote縲’aster-whisper縲：Fmpeg縲；PU譚｡莉ｶ繧堤｢ｺ隱阪〒縺阪ｋ縲・/td>
+            <td>Video縺ｮ <code>POST /models/list</code> 縺ｯAudio莠呈鋤縺ｮ <code>models</code> 驟榊・縲・code>pipeline.generation_signature</code>縲〃ideo蝗ｺ譛峨・ <code>components</code> 驟榊・繧定ｿ斐☆縲・code>--include-remote</code> 縺ｧHugging Face縺ｮlicense/gated諠・ｱ繧ょ叙蠕励〒縺阪ｋ縲・/td>
             <td class="status ok">笳・/td>
             <td><code>model_inventory.py</code>, Docker螳溯｡檎ｵ先棡</td>
             <td>縺ｪ縺励・/td>
@@ -487,7 +487,7 @@
             <td class="category">Runtime</td>
             <td>螳溷虚逕ｻ縺ｧ縺ｮ迴ｾ蝨ｨ蜃ｦ逅・憾諷・/td>
             <td>蜿ら・陬ｽ蜩√・蟇ｾ雎｡繝輔ぃ繧､繝ｫ繧知aster artifact縺ｸ螟画鋤縺吶ｋ縲・/td>
-            <td>Video縺ｯ蟶ｸ鬧陣orker縺ｨ <code>items refresh</code> 縺ｧmaster artifact繧剃ｽ懊ｋ縲Ｑipeline version譖ｴ譁ｰ縺ｫ繧医ｊ縲∵里蟄亙tem繧よ眠縺励＞Audio/Image parity螂醍ｴ・〒蜀榊・逅・ｯｾ雎｡縺ｫ縺ｪ繧九・/td>
+            <td>Video縺ｯ蟶ｸ鬧陣orker縺ｨ <code>POST /items/refresh</code> 縺ｧmaster artifact繧剃ｽ懊ｋ縲Ｑipeline version譖ｴ譁ｰ縺ｫ繧医ｊ縲∵里蟄亙tem繧よ眠縺励＞Audio/Image parity螂醍ｴ・〒蜀榊・逅・ｯｾ雎｡縺ｫ縺ｪ繧九・/td>
             <td class="status ok">笳・/td>
             <td><code>C:\TimelineData\video\items</code> 螳滓ｸｬ</td>
             <td>蜈ｨ莉ｶ蜃ｦ逅・・螳御ｺ・ｾ・■縺ｯ驕狗畑騾ｲ謐励→縺励※蛻･邂｡逅・・/td>
@@ -495,8 +495,8 @@
           <tr>
             <td class="category">Runtime</td>
             <td>荳隕ｧCLI縺ｮ繝壹・繧ｸ繝ｳ繧ｰ</td>
-            <td>Audio/Image縺ｯ荳隕ｧUI蜷代￠縺ｫ <code>--page</code> / <code>--page-size</code> 繧呈戟縺､縲・/td>
-            <td>Video繧・<code>files list</code>, <code>items list</code>, <code>runs list</code> 縺ｧ <code>--page</code> / <code>--page-size</code> 繧貞女縺台ｻ倥￠縲゛SON縺ｫ <code>pagination</code> 繧定ｿ斐☆縲・/td>
+            <td>Audio/Image縺ｯ荳隕ｧUI蜷代￠縺ｫ <code>page</code> / <code>pageSize</code> 繧呈戟縺､縲・/td>
+            <td>Video繧・<code>POST /files/list</code>, <code>POST /items/list</code>, <code>run inspection API</code> 縺ｧ <code>page</code> / <code>pageSize</code> 繧貞女縺台ｻ倥￠縲゛SON縺ｫ <code>pagination</code> 繧定ｿ斐☆縲・/td>
             <td class="status ok">笳・/td>
             <td><code>api_server.py</code>, <code>pagination.py</code>, <code>test_api_server.py</code></td>
             <td>縺ｪ縺励・/td>
@@ -531,7 +531,7 @@
         <li><strong>Audio:</strong> Whisper譛ｬ譁・ｒ菫晄戟縺励《peaker label縺縺代ｒpyannote縺ｮoverlap縺ｧ莉倅ｸ弱☆繧九ｈ縺・↓縺励◆縲・/li>
         <li><strong>Audio:</strong> pyannote/faster-whisper縺ｮ譌｢螳壼虚菴懊ｒ蠢・医↓縺励◆縲・/li>
         <li><strong>GPU:</strong> <code>computeMode</code> 縺ｮ譌｢螳壹ｒ <code>gpu</code> 縺ｫ縺励、udio莠呈鋤繝｢繝・Ν縺ｯCPU縺ｸ鮟吶▲縺ｦfallback縺励↑縺・ｈ縺・↓縺励◆縲・/li>
-        <li><strong>Worker command:</strong> <code>files list</code>, <code>items list</code>, <code>runs list</code> 縺ｫ繝壹・繧ｸ繝ｳ繧ｰ繧定ｿｽ蜉縺励◆縲・/li>
+        <li><strong>API action:</strong> <code>POST /files/list</code>, <code>POST /items/list</code>, <code>run inspection API</code> 縺ｫ繝壹・繧ｸ繝ｳ繧ｰ繧定ｿｽ蜉縺励◆縲・/li>
         <li><strong>Image:</strong> palette驥丞ｭ仙喧繧・<code>Image.Quantize.MEDIANCUT</code> 縺ｫ謠・∴縺溘・/li>
         <li><strong>Image:</strong> 3x3 grid縺ｫ <code>cell_id</code> 繧定ｿｽ蜉縺励◆縲・/li>
         <li><strong>Docs:</strong> README縲ヽuntime縲￣ipeline縲＾utput contract繧呈眠縺励＞蜃ｦ逅・･醍ｴ・↓蜷医ｏ縺帙◆縲・/li>

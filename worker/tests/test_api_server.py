@@ -134,7 +134,7 @@ def write_example_settings(
 
 
 class VideoApiServerTests(unittest.TestCase):
-    def test_api_server_dispatches_items_refresh_without_operation_process(self) -> None:
+    def test_api_server_dispatches_items_refresh_without_process_spawn(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             source = root / "input" / "clip.mp4"

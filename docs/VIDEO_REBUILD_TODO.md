@@ -12,20 +12,20 @@ Target video input roots:
 - [x] Confirm current repo and Docker state.
 - [x] Update local `settings.json` to target the two video input roots.
 - [x] Change `serve` from idle loop to resident refresh worker.
-- [x] Make `items refresh` the normal full processing entrypoint.
+- [x] Make `POST /items/refresh` the normal full processing entrypoint.
 - [x] Add minimal internal lock, catalog, run status, and skip-no-changes behavior.
-- [x] Add `serve --once` for deterministic worker testing.
-- [x] Add `runs list` and `runs show` for worker run inspection.
+- [x] Add deterministic worker testing for the refresh loop.
+- [x] Add worker run inspection through API/debug output.
 - [x] Expand Image parity beyond OCR into frame-level visual features.
 - [x] Add GPU worker flavor for Video audio models, matching Audio's CPU/GPU split.
 - [x] Add item-selected download/remove options.
-- [x] Add `--page` / `--page-size` to list-style worker operations for Timeline UI integration.
+- [x] Add `page` / `pageSize` to list-style API requests for Timeline UI integration.
 - [x] Run Docker build and resident-worker smoke check after this change set.
 - [x] Do final source-safety and ZIP exclusion validation.
 
 ## Current Correction
 
-`items refresh` now runs the local Video evidence pipeline for changed source
+`POST /items/refresh` now runs the local Video evidence pipeline for changed source
 videos:
 
 1. discover configured source videos

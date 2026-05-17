@@ -13,7 +13,7 @@ TimelineForVideo v1 treats source videos as read-only inputs.
 
 Generated artifacts are written only under `outputRoot`.
 
-`items remove` targets known generated files:
+`POST /items/remove` targets known generated files:
 
 - item JSON records
 - ffprobe, frame sample, frame OCR, and audio analysis raw outputs
@@ -31,7 +31,7 @@ arbitrary files from `outputRoot`.
 
 The v1 rebuild includes local OCR over generated frame images and source-safe
 audio derivative analysis. The generated MP3 derivative is a local artifact under
-`outputRoot`; it is removed by `items remove`, but it is not included in export
+`outputRoot`; it is removed by `POST /items/remove`, but it is not included in export
 ZIPs.
 
 The v1 rebuild intentionally excludes:

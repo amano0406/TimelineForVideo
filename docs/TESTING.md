@@ -28,14 +28,14 @@ The test suite covers:
 - ZIP source video exclusion
 - ZIP MP3 derivative exclusion
 - remove source-safety behavior
-- worker operation and worker API JSON behavior
+- worker API action and worker API JSON behavior
 - CPU and GPU compose configuration
 
 For full smoke validation, create a short generated sample video with audio, run
-`process all`, list items, download, dry-run remove, and actual remove. Confirm
+refresh, list items, download, dry-run remove, and actual remove. Confirm
 the source video still exists after remove and the ZIP contains no source video
 or generated MP3 audio derivative.
 
 For live pyannote/faster-whisper validation, provide a Hugging Face token through the
-environment and run `audio analyze --audio-model-mode required` on a short
+environment and run the audio analysis path with `audioModelMode: "required"` on a short
 generated speech video. Do not store the token in committed files.

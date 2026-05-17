@@ -76,7 +76,7 @@ Keep the first product small and rebuildable:
 
 - one repo
 - one worker package
-- one worker operation surface behind the API
+- one worker API action surface
 - clear JSON outputs
 - generated artifacts separated from source videos
 - direct smoke test path

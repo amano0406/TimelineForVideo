@@ -2,11 +2,11 @@
 
 ## 1. Configure
 
-`settings save` defines input video roots and `outputRoot`.
+`POST /settings/save` defines input video roots and `outputRoot`.
 
 ## 2. Discover
 
-`files list` scans configured input roots for supported video extensions.
+`POST /files/list` scans configured input roots for supported video extensions.
 
 Supported extensions:
 
@@ -21,20 +21,20 @@ fingerprint, and item id from path/stat metadata.
 
 ## 4. Inspect Components
 
-`models list` reports an Audio-compatible `models` array and
+`POST /models/list` reports an Audio-compatible `models` array and
 `pipeline.generation_signature` for model license/access review, plus a Video
 `components` array for runtime readiness.
-`models list --include-remote --json` fetches Hugging Face metadata. It does
+`POST /models/list` with `includeRemote` fetches Hugging Face metadata. It does
 not process source videos.
 
 ## 5. Sample
 
-`sample frames` extracts a bounded set of review frames and a contact sheet.
+The frame sampling stage extracts a bounded set of review frames and a contact sheet.
 It does not extract all frames.
 
 ## 6. Frame OCR
 
-`ocr frames` runs local Tesseract OCR over generated frame sample artifacts. This
+The OCR stage runs local Tesseract OCR over generated frame sample artifacts. This
 follows the TimelineForImage OCR contract, but the implementation is local to
 TimelineForVideo.
 
@@ -43,7 +43,7 @@ brightness, contrast, dominant colors, and a 3x3 average-color grid.
 
 ## 7. Audio Analysis
 
-`audio analyze` extracts a generated MP3 derivative under `outputRoot` for
+The audio analysis stage extracts a generated MP3 derivative under `outputRoot` for
 review, creates a temporary normalized WAV for model processing, runs ffmpeg
 speech candidate detection on that WAV, and runs pyannote diarization plus
 faster-whisper transcription over the same WAV. Whisper decides what was said;
@@ -58,7 +58,7 @@ sentinel deltas. It writes `raw_outputs/activity_map.json` with active
 candidate intervals and inactive intervals that can be skipped because the
 audio is silent and the visual signal is static.
 
-`items refresh` is the normal product processing entrypoint. It discovers
+`POST /items/refresh` is the normal product processing entrypoint. It discovers
 configured source videos, checks the internal catalog, and processes changed or
 incomplete items only.
 
@@ -83,10 +83,10 @@ Docker app-data volume. They are not source inputs and are not exported.
 
 ## 9. Full Processing
 
-`process all` forces the same pipeline over the selected batch. It is primarily
+The full processing pipeline forces the same stages over the selected batch. It is primarily
 for manual validation and reprocessing.
 
 ## 10. Export Or Remove
 
-`items download` creates a generated-artifact ZIP and updates `latest`.
-`items remove` deletes only known generated artifacts.
+`POST /items/download` creates a generated-artifact ZIP and updates `latest`.
+`POST /items/remove` deletes only known generated artifacts.

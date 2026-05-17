@@ -44,7 +44,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "<parse start.ps1/sto
 - Third-party notices: added for direct worker dependencies and model
   prerequisites.
 - PowerShell launcher parse check: passed.
-- Generated-video resident-worker smoke test: passed with `serve --once`.
+- Generated-video resident-worker smoke test: passed through the local API.
 - Selected item ZIP export and selected item remove smoke tests: passed.
 
 ## Smoke Coverage
@@ -52,14 +52,14 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "<parse start.ps1/sto
 The final smoke test generated a short local sample video with audio under
 `C:\Codex\tmp`, then verified:
 
-- `doctor`
-- `models list`
-- `serve --once --max-items 1 --samples-per-video 3`
-- `audio analyze --audio-model-mode required`
-- `items list`
-- `items download`
-- `items remove --dry-run`
-- `items remove`
+- `POST /health` and settings/model readiness checks
+- `POST /models/list`
+- `POST /items/refresh` with `maxItems: 1` and `samplesPerVideo: 3`
+- `POST /items/refresh` with `audioModelMode: "required"`
+- `POST /items/list`
+- `POST /items/download`
+- `POST /items/remove` with `dryRun`
+- `POST /items/remove`
 
 The smoke test confirmed:
 
@@ -69,8 +69,8 @@ The smoke test confirmed:
 - `raw_outputs/audio_analysis.json` was written.
 - `artifacts/audio/source_audio.mp3` was written under `outputRoot`.
 - `convert_info.json` included both `ffprobeVersion` and `ffmpegVersion`.
-- `items list` reported OCR and audio-evidence counts.
-- Diagnostic `--audio-model-mode auto` recorded `not_configured` without
+- `POST /items/list` reported OCR and audio-evidence counts.
+- Diagnostic `audioModelMode: "auto"` recorded `not_configured` without
   inventing speaker turns or transcript text when no Hugging Face token was
   configured.
 - Default required audio-model execution returned a structured failure when no
@@ -79,7 +79,7 @@ The smoke test confirmed:
   audio stream.
 - the ZIP contained generated item files and did not contain `.mp4` source video
   files or `.mp3` audio derivatives.
-- after `items remove`, the source video still existed and its size/mtime were
+- after `POST /items/remove`, the source video still existed and its size/mtime were
   unchanged.
 
 Temporary smoke-test files were removed after validation.

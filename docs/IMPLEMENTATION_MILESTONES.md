@@ -16,14 +16,14 @@
 - Windows launcher
 - settings file
 - `health`
-- `settings init/status/save`
+- `POST /settings/init`, `POST /settings/status`, `POST /settings/save`
 
 ## Milestone 2: Discovery And Doctor
 
 - input file and directory support
 - recursive discovery
 - supported video extensions
-- `files list`
+- `POST /files/list`
 - `doctor`
 
 ## Milestone 3: ffprobe And Source Identity
@@ -47,15 +47,15 @@
 - `video_record.json`
 - `timeline.json`
 - `convert_info.json`
-- `items refresh`
-- `items list`
+- `POST /items/refresh`
+- `POST /items/list`
 
 ## Milestone 6: Export And Remove
 
-- `items download`
+- `POST /items/download`
 - `latest/`
-- `items remove --dry-run`
-- `items remove`
+- `POST /items/remove` with `dryRun`
+- `POST /items/remove`
 - source-safety tests
 
 ## Milestone 7: Docs And Validation
@@ -73,15 +73,15 @@
 - audio derivative, speech candidate evidence, pyannote diarization, and
   faster-whisper transcription execution paths, following TimelineForAudio behavior without
   source sharing
-- `ocr frames`
-- `audio analyze`
-- `process all`
+- OCR stage
+- audio analysis stage
+- full processing pipeline
 - record, timeline, export, and remove integration
 
 ## Milestone 9: Resident Worker Parity Correction
 
-- make `serve` the resident changed-video worker loop
-- make `items refresh` the normal full processing entrypoint
+- keep the changed-video worker loop behind explicit API requests
+- make `POST /items/refresh` the normal full processing entrypoint
 - add internal catalog, lock, run status, and skip-no-changes behavior
-- add `runs list/show`
+- expose run inspection through API/debug output
 - document the remaining parity gaps in `docs/VIDEO_REBUILD_TODO.md`

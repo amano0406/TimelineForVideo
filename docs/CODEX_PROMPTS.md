@@ -57,7 +57,7 @@ C:\Codex\workspaces\dockforchatgpt\chat_conversations\snapshots\20260506-114835-
 - Windows launcher
 - settings file
 - health
-- settings init/status/save
+- POST /settings/init, POST /settings/status, POST /settings/save
 - 最小README更新
 
 必ず守ること:

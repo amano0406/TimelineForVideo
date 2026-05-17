@@ -2,31 +2,28 @@
 
 ## Required Behavior
 
-- `settings init/status/save` work.
+- `POST /settings/init`, `POST /settings/status`, and `POST /settings/save` work.
 - `health` works.
 - `doctor` checks runtime and configured paths.
-- `models list` reports Audio-compatible model rows, pipeline generation
+- `POST /models/list` reports Audio-compatible model rows, pipeline generation
   signature, Video runtime components, and pyannote/faster-whisper readiness.
-- `models list --include-remote --json` attaches Hugging Face metadata to
+- `POST /models/list` with `includeRemote` attaches Hugging Face metadata to
   Hugging Face model rows.
-- `files list` discovers video files from file and directory inputs.
-- `sample frames --max-items 1` extracts bounded frame evidence.
-- `ocr frames --max-items 1` writes local frame OCR evidence.
-- `audio analyze --max-items 1` writes source-safe audio evidence.
-- `audio analyze --audio-model-mode required` fails structurally when token or
+- `POST /files/list` discovers video files from file and directory inputs.
+- `POST /items/refresh` extracts bounded frame evidence.
+- `POST /items/refresh` writes local frame OCR evidence.
+- `POST /items/refresh` writes source-safe audio evidence.
+- `POST /items/refresh` with `audioModelMode: "required"` fails structurally when token or
   model prerequisites are missing.
-- `process all --max-items 1` runs the full local evidence pipeline.
-- `items refresh --max-items 1` processes one sample video.
-- `serve --once --max-items 1` runs one resident-worker refresh cycle.
-- `runs list` and `runs show` expose worker run state.
-- `items list` shows generated items.
-- `items download` creates a ZIP.
-- `items download --item-id <id>` exports selected generated items.
+- `POST /items/refresh` runs the full local evidence pipeline for one sample video when `maxItems` is 1.
+- `POST /items/list` shows generated items.
+- `POST /items/download` creates a ZIP.
+- `POST /items/download` with `itemIds` exports selected generated items.
 - ZIP exports do not include source videos.
 - ZIP exports do not include generated MP3 audio derivatives.
-- `items remove --dry-run` reports generated artifacts only.
-- `items remove` removes generated artifacts only.
-- `items remove --item-id <id>` removes selected generated item artifacts only.
+- `POST /items/remove` with `dryRun` reports generated artifacts only.
+- `POST /items/remove` removes generated artifacts only.
+- `POST /items/remove` with `itemIds` removes selected generated item artifacts only.
 - Source videos remain after remove.
 
 ## Required Tests

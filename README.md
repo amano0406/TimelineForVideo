@@ -9,8 +9,8 @@ human review and LLM handoff.
 
 The normal runtime is a Docker worker that serves a small local HTTP API.
 Starting Docker or running `start.ps1` does not automatically process videos.
-Processing starts only when a processing operation is explicitly run, such as
-the local API refresh endpoint or a manual maintenance operation.
+Processing starts only when an API action is explicitly requested, such as
+the local API refresh endpoint.
 
 ## Quick Start
 
@@ -61,7 +61,7 @@ provided, the prefix is normalized away. `runtime.apiPort` controls the host
 port for the local API at `http://127.0.0.1:<apiPort>/health`.
 
 The Hugging Face token can be stored in local `settings.json` with
-`settings save --token <TOKEN>` or supplied through
+`POST /settings/save` or supplied through
 `TIMELINE_FOR_VIDEO_HUGGING_FACE_TOKEN`, `HUGGING_FACE_HUB_TOKEN`, or
 `HF_TOKEN`. JSON output reports whether a token is configured without printing
 the token value.
@@ -83,9 +83,9 @@ POST /items/remove
 POST /models/list
 ```
 
-`GET /health` and operation routes are served by the resident Python worker
+`GET /health` and API routes are served by the resident Python worker
 container. API calls do not call host launchers, do not start Docker
-implicitly, and do not spawn a Python operation process for each request.
+implicitly, and do not spawn a separate Python process for each request.
 
 ## Output JSON
 
@@ -96,7 +96,7 @@ meanings.
 
 ## Safety
 
-Source videos are read-only inputs. Current operations validate settings, check
+Source videos are read-only inputs. Current API actions validate settings, check
 configured paths, discover video files by path and extension, read ffprobe
 metadata, extract bounded review frames with ffmpeg, run local OCR on generated
 frame artifacts, and write generated audio evidence under `outputRoot`. They do
@@ -127,7 +127,7 @@ Milestone 4 sampling writes generated artifacts only under `outputRoot`:
           frame-000001.jpg
 ```
 
-The default sampling operation is bounded to one video and five frames per video.
+The default sampling stage is bounded to one video and five frames per video.
 
 Milestone 5 item refresh writes item records under `outputRoot`:
 
@@ -151,16 +151,15 @@ Milestone 5 item refresh writes item records under `outputRoot`:
         audio/
 ```
 
-`items refresh` runs the local evidence pipeline for changed videos: bounded
+`POST /items/refresh` runs the local evidence pipeline for changed videos: bounded
 frame sampling, frame OCR, frame visual-feature extraction, audio derivative
 analysis, TimelineForAudio-compatible audio models, activity mapping, and item
 record refresh. The same stages are also exposed as smaller diagnostic
-operations. `activity map` writes `raw_outputs/activity_map.json` with merged
+code paths for tests. `activity map` writes `raw_outputs/activity_map.json` with merged
 audio activity, five-minute visual sentinel deltas, and inactive intervals that
-can be skipped because no useful source signal was found. `process all` forces the same
-pipeline over the selected batch. `serve` runs the changed-video refresh loop
-continuously when explicitly invoked as a worker operation; it is not the Docker
-container's default startup task.
+can be skipped because no useful source signal was found. Container startup does
+not run the changed-video refresh loop; processing only starts from an explicit
+API request.
 
 `POST /files/list` and `POST /items/list` accept `page` and `pageSize` for
 Timeline UI pagination. When pagination fields are omitted, they return all rows
@@ -179,10 +178,10 @@ When `serve` is explicitly invoked, it defaults to one changed item per refresh
 cycle through `TIMELINE_FOR_VIDEO_WORKER_MAX_ITEMS=1`. Override that
 environment variable when intentionally processing a larger batch.
 
-`models list` reports an Audio-compatible `models` array and
+`POST /models/list` reports an Audio-compatible `models` array and
 `pipeline.generation_signature` for parent-product license/access display, plus
 a Video `components` array for runtime readiness.
-`--include-remote` fetches Hugging Face metadata such as license and gated
+The `includeRemote` request field fetches Hugging Face metadata such as license and gated
 status. Frame OCR is executed locally with Tesseract. Audio derivative and
 speech-candidate detection are executed locally with ffmpeg. The generated MP3
 is a review artifact only; pyannote diarization and faster-whisper
@@ -190,20 +189,20 @@ transcription read a temporary normalized WAV. Whisper text is preserved as the
 source transcript, and pyannote is used only to attach speaker labels. Audio
 model execution is required by default and fails the item instead of inventing
 speaker turns or transcript text.
-Diagnostic operations may still override execution mode for isolated
+Diagnostic API requests may still override execution mode for isolated
 troubleshooting, but that mode is not stored in settings.
 
-Milestone 6 export and removal operations are source-safe:
+Milestone 6 export and removal API actions are source-safe:
 
-- `items download` writes a ZIP under `<outputRoot>\downloads\` and refreshes
-  `<outputRoot>\latest\items.zip`. Use `--item-id` to export selected items.
+- `POST /items/download` writes a ZIP under `<outputRoot>\downloads\` and refreshes
+  `<outputRoot>\latest\items.zip`. Use `itemIds` to export selected items.
 - ZIP exports include generated item records, raw outputs, and artifacts only.
   They do not include source videos. The generated MP3 audio derivative is kept
   under `outputRoot` for local review and removal, but is not included in the
   ZIP export.
-- `items remove --dry-run` reports generated artifacts that would be removed.
-- `items remove --item-id <item-id>` removes selected generated item artifacts.
-- `items remove` recursively deletes generated item artifacts under
+- `POST /items/remove` with `dryRun` reports generated artifacts that would be removed.
+- `POST /items/remove` with `itemIds` removes selected generated item artifacts.
+- `POST /items/remove` recursively deletes generated item artifacts under
   `outputRoot`, including raw outputs, frame artifacts, OCR artifacts, audio
   derivatives, download ZIPs, and temporary `.processing` files. It prunes empty
   generated directories. It does not delete source videos.
@@ -211,8 +210,8 @@ Milestone 6 export and removal operations are source-safe:
 Container startup does not start processing. If a background refresh loop is
 explicitly running and the source video still exists under an input root,
 generated items can be created again on the next worker cycle. Treat
-`items remove` as generated artifact cleanup, not as a durable "ignore this
-source video" operation.
+`POST /items/remove` as generated artifact cleanup, not as a durable "ignore this
+source video" API action.
 
 ## Design Docs
 
