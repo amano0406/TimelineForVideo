@@ -757,7 +757,7 @@ Merged activity map used to identify useful intervals and skippable intervals.
 
 ## Worker Command JSON Results
 
-Worker commands return JSON envelopes when `--json` is passed. These are command
+Worker operations return JSON envelopes when `--json` is passed. These are operation
 results, not necessarily durable item files.
 
 ### `items refresh --json`
