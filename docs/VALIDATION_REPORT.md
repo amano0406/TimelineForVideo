@@ -31,7 +31,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "<parse start.ps1/sto
 - Docker compose config: passed for CPU and GPU compose layers.
 - Docker image build: passed.
 - Docker health: passed.
-- Docker settings status: passed with configured roots `C:\Users\amano\Videos\`
+- Docker `POST /settings/status`: passed with configured roots `C:\Users\amano\Videos\`
   and `F:\Video\`.
 - Model inventory unit tests: passed, including required component counts,
   compute mode, and source-safety flags.
