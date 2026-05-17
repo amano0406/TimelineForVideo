@@ -137,7 +137,7 @@ Write-Host "Compute mode: $computeMode"
 Write-Host "Instance name: $($runtime.InstanceName)"
 Write-Host "Compose project: $($runtime.ComposeProject)"
 Write-Host "API URL: http://127.0.0.1:$($runtime.ApiPort)/health"
-Write-Host "Starting TimelineForVideo command worker..."
+Write-Host "Starting TimelineForVideo worker..."
 $global:LASTEXITCODE = $null
 $upArgs = @("up", "-d", "--remove-orphans")
 if ($Build) {
@@ -151,7 +151,7 @@ if ((Get-TfvLastExitCode) -ne 0) {
 Start-TfvNativeApi -ApiPort ([int]$runtime.ApiPort) -RunInForeground:$Foreground
 
 Write-Host ""
-Write-Host "TimelineForVideo command worker and API are running."
+Write-Host "TimelineForVideo worker and API are running."
 Write-Host "Processing does not start automatically. Call the local API when processing is needed."
 Write-Host ""
 Write-Host "API examples:"

@@ -9,7 +9,7 @@ Invoke-RestMethod http://127.0.0.1:19500/health
 Invoke-RestMethod http://127.0.0.1:19500/items/list -Method Post -Body "{}" -ContentType "application/json"
 ```
 
-`start.ps1` starts an idle Python command worker container and a minimal C#
+`start.ps1` starts an idle Python worker container and a minimal C#
 health API. It uses existing images by default; pass `-Build` when you
 intentionally want Docker images rebuilt. The health API exposes only
 `GET /health`, returns `true` or `false`, and uses `settings.json`
@@ -34,8 +34,8 @@ shared cache volume is used for Hugging Face, Torch, and related model caches
 so audio-model downloads can be reused across worker runs for the same product
 instance.
 
-The Docker service stays alive with an idle command. The local API executes commands
-inside that container. `serve` still exists as the resident worker loop, but it
+The Docker service stays alive with an idle task. The local API executes worker
+operations inside that container. `serve` still exists as the resident worker loop, but it
 is manual: it loads `settings.json`, processes changed videos with the same
 pipeline as `items refresh`, records run status, then sleeps until the next
 interval. The compose default sets `TIMELINE_FOR_VIDEO_WORKER_MAX_ITEMS=1`, so
@@ -100,13 +100,13 @@ normalized WAV, runs speech candidate detection on that WAV, and then runs the
 pyannote/faster-whisper model path on the same WAV. The temporary WAV is
 removed after the item is processed and is not a master artifact.
 Audio model execution is required by default; the item fails when pyannote or
-faster-whisper cannot run. Diagnostic commands can still pass
+faster-whisper cannot run. Diagnostic operations can still pass
 `--audio-model-mode auto` or `--audio-model-mode off` for isolated
 troubleshooting, but that mode is not a settings field and is not persisted.
 
 The token can be stored in local `settings.json` with `settings save --token`
 or provided through `TIMELINE_FOR_VIDEO_HUGGING_FACE_TOKEN`,
-`HUGGING_FACE_HUB_TOKEN`, or `HF_TOKEN`. JSON command output redacts the token.
+`HUGGING_FACE_HUB_TOKEN`, or `HF_TOKEN`. JSON operation output redacts the token.
 
 ## Current Components
 

@@ -148,7 +148,7 @@ def page_summary(pagination: dict[str, Any], noun: str) -> str:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="timeline-for-video",
-        description="Local TimelineForVideo worker commands.",
+        description="Local TimelineForVideo worker operations.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 

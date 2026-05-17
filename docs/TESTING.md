@@ -28,7 +28,7 @@ The test suite covers:
 - ZIP source video exclusion
 - ZIP MP3 derivative exclusion
 - remove source-safety behavior
-- worker command JSON behavior
+- worker operation JSON behavior
 - CPU and GPU compose configuration
 
 For full smoke validation, create a short generated sample video with audio, run

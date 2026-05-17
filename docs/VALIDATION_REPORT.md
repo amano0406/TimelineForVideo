@@ -7,7 +7,7 @@ safety validation.
 
 Passed.
 
-## Commands
+## Checks
 
 ```bash
 PYTHONPATH=worker/src python3 -m unittest discover -s worker/tests -v

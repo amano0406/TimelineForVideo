@@ -7,10 +7,10 @@ TimelineForVideo is a local Docker-first video evidence worker. It reads source
 videos as read-only inputs and writes timeline-oriented evidence packages for
 human review and LLM handoff.
 
-The normal runtime is an idle Docker command worker plus a small local C#
+The normal runtime is an idle Docker worker plus a small local C#
 API. Starting Docker or running `start.ps1` does not automatically process
-videos. Processing starts only when a processing command is explicitly run,
-such as the local API refresh endpoint or a manual maintenance command.
+videos. Processing starts only when a processing operation is explicitly run,
+such as the local API refresh endpoint or a manual maintenance operation.
 
 ## Quick Start
 
@@ -97,7 +97,7 @@ meanings.
 
 ## Safety
 
-Source videos are read-only inputs. Current commands validate settings, check
+Source videos are read-only inputs. Current operations validate settings, check
 configured paths, discover video files by path and extension, read ffprobe
 metadata, extract bounded review frames with ffmpeg, run local OCR on generated
 frame artifacts, and write generated audio evidence under `outputRoot`. They do
@@ -128,7 +128,7 @@ Milestone 4 sampling writes generated artifacts only under `outputRoot`:
           frame-000001.jpg
 ```
 
-The default sampling command is bounded to one video and five frames per video.
+The default sampling operation is bounded to one video and five frames per video.
 
 Milestone 5 item refresh writes item records under `outputRoot`:
 
@@ -156,12 +156,12 @@ Milestone 5 item refresh writes item records under `outputRoot`:
 frame sampling, frame OCR, frame visual-feature extraction, audio derivative
 analysis, TimelineForAudio-compatible audio models, activity mapping, and item
 record refresh. The same stages are also exposed as smaller diagnostic
-commands. `activity map` writes `raw_outputs/activity_map.json` with merged
+operations. `activity map` writes `raw_outputs/activity_map.json` with merged
 audio activity, five-minute visual sentinel deltas, and inactive intervals that
 can be skipped because no useful source signal was found. `process all` forces the same
 pipeline over the selected batch. `serve` runs the changed-video refresh loop
-continuously when explicitly invoked as a worker command; it is not the Docker
-container's default startup command.
+continuously when explicitly invoked as a worker operation; it is not the Docker
+container's default startup task.
 
 `POST /files/list` and `POST /items/list` accept `page` and `pageSize` for
 Timeline UI pagination. When pagination fields are omitted, they return all rows
@@ -191,10 +191,10 @@ transcription read a temporary normalized WAV. Whisper text is preserved as the
 source transcript, and pyannote is used only to attach speaker labels. Audio
 model execution is required by default and fails the item instead of inventing
 speaker turns or transcript text.
-Diagnostic commands may still override execution mode for isolated
+Diagnostic operations may still override execution mode for isolated
 troubleshooting, but that mode is not stored in settings.
 
-Milestone 6 export and removal commands are source-safe:
+Milestone 6 export and removal operations are source-safe:
 
 - `items download` writes a ZIP under `<outputRoot>\downloads\` and refreshes
   `<outputRoot>\latest\items.zip`. Use `--item-id` to export selected items.
@@ -213,7 +213,7 @@ Container startup does not start processing. If a background refresh loop is
 explicitly running and the source video still exists under an input root,
 generated items can be created again on the next worker cycle. Treat
 `items remove` as generated artifact cleanup, not as a durable "ignore this
-source video" command.
+source video" operation.
 
 ## Design Docs
 
