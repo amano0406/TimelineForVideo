@@ -9,11 +9,9 @@ Invoke-RestMethod http://127.0.0.1:19500/health
 Invoke-RestMethod http://127.0.0.1:19500/items/list -Method Post -Body "{}" -ContentType "application/json"
 ```
 
-`start.ps1` starts an idle Python worker container and a minimal C#
-health API. It uses existing images by default; pass `-Build` when you
-intentionally want Docker images rebuilt. The health API exposes only
-`GET /health`, returns `true` or `false`, and uses `settings.json`
-`runtime.apiPort` for the host port.
+`start.ps1` starts the Python worker container. That container also serves the
+local HTTP API on the configured host port. It uses existing images by default;
+pass `-Build` when you intentionally want Docker images rebuilt.
 
 The worker container does not process videos on startup. This prevents Docker
 Desktop or compose restarts from automatically resuming an interrupted video
@@ -34,13 +32,13 @@ shared cache volume is used for Hugging Face, Torch, and related model caches
 so audio-model downloads can be reused across worker runs for the same product
 instance.
 
-The Docker service stays alive with an idle task. The local API executes worker
-operations inside that container. `serve` still exists as the resident worker loop, but it
-is manual: it loads `settings.json`, processes changed videos with the same
-pipeline as `items refresh`, records run status, then sleeps until the next
-interval. The compose default sets `TIMELINE_FOR_VIDEO_WORKER_MAX_ITEMS=1`, so
-manual `serve` processing advances one changed item per cycle unless the
-operator explicitly raises or clears that environment variable.
+The Docker service stays alive as the worker API process. `serve` still exists
+as the resident worker loop, but it is manual: it loads `settings.json`,
+processes changed videos with the same pipeline as `items refresh`, records run
+status, then sleeps until the next interval. The compose default sets
+`TIMELINE_FOR_VIDEO_WORKER_MAX_ITEMS=1`, so manual `serve` processing advances
+one changed item per cycle unless the operator explicitly raises or clears that
+environment variable.
 
 ## CPU And GPU Compose
 
@@ -71,7 +69,8 @@ Tesseract/Pillow processing.
 Invoke-RestMethod http://127.0.0.1:19500/health
 ```
 
-The health API returns `true` or `false`.
+The worker API returns JSON health information. Any successful response means
+the product API is reachable.
 
 ## Run Status
 

@@ -1022,6 +1022,105 @@ class OperationTests(unittest.TestCase):
             self.assertTrue(remove_payload["dryRun"])
             self.assertGreater(remove_payload["counts"]["targetFiles"], 0)
 
+    def test_api_server_dispatches_items_refresh_without_operation_process(self) -> None:
+        from timeline_for_video_worker.api_server import handle_request
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "input" / "clip.mp4"
+            source.parent.mkdir()
+            source.write_bytes(b"video")
+            output_root = root / "output"
+            fake_ffprobe = write_fake_ffprobe(root)
+            fake_ffmpeg = write_fake_ffmpeg(root)
+            settings_path, example_path = write_example_settings(
+                root,
+                input_roots=[str(source.parent)],
+                output_root=str(output_root),
+            )
+            env = {
+                "TIMELINE_FOR_VIDEO_SETTINGS_PATH": str(settings_path),
+                "TIMELINE_FOR_VIDEO_SETTINGS_EXAMPLE_PATH": str(example_path),
+                "TIMELINE_FOR_VIDEO_INTERNAL_STATE_ROOT": str(root / "state"),
+            }
+
+            with patch.dict(os.environ, env, clear=False):
+                status, init_payload = handle_request("POST", "/settings/init", {})
+                self.assertEqual(int(status), 200)
+                self.assertTrue(init_payload["created"])
+
+                status, files_payload = handle_request("POST", "/files/list", {})
+                self.assertEqual(int(status), 200)
+                self.assertEqual(files_payload["counts"]["files"], 1)
+
+                status, refresh_payload = handle_request(
+                    "POST",
+                    "/items/refresh",
+                    {
+                        "ffprobeBin": fake_ffprobe,
+                        "ffmpegBin": fake_ffmpeg,
+                        "maxItems": 1,
+                        "samplesPerVideo": 1,
+                        "ocrMode": "off",
+                        "audioModelMode": "off",
+                    },
+                )
+                self.assertEqual(int(status), 200)
+                self.assertEqual(refresh_payload["counts"]["processedItems"], 1)
+
+                status, list_payload = handle_request("POST", "/items/list", {"page": 1, "pageSize": 10})
+                self.assertEqual(int(status), 200)
+                self.assertEqual(list_payload["counts"]["items"], 1)
+                self.assertEqual(list_payload["counts"]["returnedItems"], 1)
+
+                status, download_payload = handle_request("POST", "/items/download", {})
+                self.assertEqual(int(status), 200)
+                self.assertFalse(download_payload["sourceVideosIncluded"])
+                self.assertTrue(Path(download_payload["archivePath"]).exists())
+
+    def test_api_server_maps_failed_refresh_to_error_status(self) -> None:
+        from timeline_for_video_worker.api_server import handle_request
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "input" / "clip.mp4"
+            source.parent.mkdir()
+            source.write_bytes(b"video")
+            output_root = root / "output"
+            fake_ffprobe = write_fake_ffprobe_with_audio(root)
+            fake_ffmpeg = write_fake_ffmpeg_failing_silencedetect(root)
+            settings_path, example_path = write_example_settings(
+                root,
+                input_roots=[str(source.parent)],
+                output_root=str(output_root),
+            )
+            env = {
+                "TIMELINE_FOR_VIDEO_SETTINGS_PATH": str(settings_path),
+                "TIMELINE_FOR_VIDEO_SETTINGS_EXAMPLE_PATH": str(example_path),
+                "TIMELINE_FOR_VIDEO_INTERNAL_STATE_ROOT": str(root / "state"),
+            }
+
+            with patch.dict(os.environ, env, clear=False):
+                status, _ = handle_request("POST", "/settings/init", {})
+                self.assertEqual(int(status), 200)
+                status, payload = handle_request(
+                    "POST",
+                    "/items/refresh",
+                    {
+                        "ffprobeBin": fake_ffprobe,
+                        "ffmpegBin": fake_ffmpeg,
+                        "maxItems": 1,
+                        "samplesPerVideo": 1,
+                        "ocrMode": "off",
+                        "audioModelMode": "off",
+                    },
+                )
+
+            self.assertEqual(int(status), 500)
+            self.assertFalse(payload["ok"])
+            self.assertEqual(payload["state"], "completed_with_errors")
+            self.assertEqual(payload["failedSteps"], ["audio"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -9,8 +9,8 @@ git diff --check
 docker compose config
 docker compose -f docker-compose.yml -f docker-compose.gpu.yml config
 docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build --no-deps worker
-docker compose -f docker-compose.yml -f docker-compose.gpu.yml exec -T worker python -m timeline_for_video_worker health --json
-docker compose -f docker-compose.yml -f docker-compose.gpu.yml exec -T worker python -m timeline_for_video_worker models list --json
+curl.exe http://127.0.0.1:19500/health
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:19500/models/list -Body '{}' -ContentType 'application/json'
 ```
 
 The test suite covers:
@@ -28,7 +28,7 @@ The test suite covers:
 - ZIP source video exclusion
 - ZIP MP3 derivative exclusion
 - remove source-safety behavior
-- worker operation JSON behavior
+- worker operation and worker API JSON behavior
 - CPU and GPU compose configuration
 
 For full smoke validation, create a short generated sample video with audio, run

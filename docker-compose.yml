@@ -1,26 +1,14 @@
 services:
-  health-api:
-    image: timeline-for-video-health-api:${TIMELINE_FOR_VIDEO_IMAGE_TAG:-latest}
-    build:
-      context: .
-      dockerfile: docker/health-api.Dockerfile
-    environment:
-      ASPNETCORE_URLS: http://0.0.0.0:8080
-      TIMELINE_FOR_VIDEO_SETTINGS_PATH: ${TIMELINE_FOR_VIDEO_SETTINGS_PATH:-/workspace/settings.json}
-    ports:
-      - "127.0.0.1:${TIMELINE_FOR_VIDEO_API_PORT:-19500}:8080"
-    volumes:
-      - ./:/workspace
-
   worker:
     image: timeline-for-video-worker:${TIMELINE_FOR_VIDEO_IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: docker/worker.Dockerfile
-    entrypoint: ["sleep", "infinity"]
     environment:
       TIMELINE_FOR_VIDEO_IN_DOCKER: "1"
       TIMELINE_FOR_VIDEO_WORKER_FLAVOR: cpu
+      TIMELINE_FOR_VIDEO_API_BIND_HOST: 0.0.0.0
+      TIMELINE_FOR_VIDEO_API_BIND_PORT: 8080
       TIMELINE_FOR_VIDEO_SETTINGS_PATH: ${TIMELINE_FOR_VIDEO_SETTINGS_PATH:-/workspace/settings.json}
       TIMELINE_FOR_VIDEO_SETTINGS_EXAMPLE_PATH: ${TIMELINE_FOR_VIDEO_SETTINGS_EXAMPLE_PATH:-/workspace/settings.example.json}
       TIMELINE_FOR_VIDEO_INTERNAL_STATE_ROOT: ${TIMELINE_FOR_VIDEO_INTERNAL_STATE_ROOT:-/shared/app-data/timeline-for-video-state}
@@ -32,6 +20,8 @@ services:
       HUGGINGFACE_HUB_CACHE: /shared/cache/huggingface/hub
       TORCH_HOME: /shared/cache/torch
       XDG_CACHE_HOME: /shared/cache/xdg
+    ports:
+      - "127.0.0.1:${TIMELINE_FOR_VIDEO_API_PORT:-19500}:8080"
     volumes:
       - ./:/workspace
       - type: bind
