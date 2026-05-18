@@ -36,10 +36,7 @@ Write-Host "Compose project: $($runtime.ComposeProject)"
 Write-Host "API URL: http://127.0.0.1:$($runtime.ApiPort)/health"
 Write-Host "Starting TimelineForVideo worker..."
 $global:LASTEXITCODE = $null
-$upArgs = @("up", "-d", "--remove-orphans")
-if ($Build) {
-    $upArgs += "--build"
-}
+$upArgs = @("up", "-d", "--build", "--remove-orphans")
 & $docker @composeArgs @upArgs worker
 if ((Get-TfvLastExitCode) -ne 0) {
     exit (Get-TfvLastExitCode)
