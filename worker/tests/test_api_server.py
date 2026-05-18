@@ -6,6 +6,7 @@ from pathlib import Path
 import stat
 import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
@@ -228,6 +229,61 @@ class VideoApiServerTests(unittest.TestCase):
             self.assertFalse(payload["ok"])
             self.assertEqual(payload["state"], "completed_with_errors")
             self.assertEqual(payload["failedSteps"], ["audio"])
+
+    def test_api_server_runs_refresh_as_status_job(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "input" / "clip.mp4"
+            source.parent.mkdir()
+            source.write_bytes(b"video")
+            output_root = root / "output"
+            fake_ffprobe = write_fake_ffprobe(root)
+            fake_ffmpeg = write_fake_ffmpeg(root)
+            settings_path, example_path = write_example_settings(
+                root,
+                input_roots=[str(source.parent)],
+                output_root=str(output_root),
+            )
+            env = {
+                "TIMELINE_FOR_VIDEO_SETTINGS_PATH": str(settings_path),
+                "TIMELINE_FOR_VIDEO_SETTINGS_EXAMPLE_PATH": str(example_path),
+                "TIMELINE_FOR_VIDEO_INTERNAL_STATE_ROOT": str(root / "state"),
+            }
+
+            with patch.dict(os.environ, env, clear=False):
+                status, _ = handle_request("POST", "/settings/init", {})
+                self.assertEqual(int(status), 200)
+                status, job = handle_request(
+                    "POST",
+                    "/jobs",
+                    {
+                        "type": "refresh",
+                        "options": {
+                            "ffprobeBin": fake_ffprobe,
+                            "ffmpegBin": fake_ffmpeg,
+                            "maxItems": 1,
+                            "samplesPerVideo": 1,
+                            "ocrMode": "off",
+                            "audioModelMode": "off",
+                        },
+                    },
+                )
+                self.assertEqual(int(status), 200)
+                self.assertTrue(job["jobId"])
+                self.assertIn(job["state"], {"queued", "running", "completed"})
+
+                latest = job
+                for _ in range(80):
+                    status, latest = handle_request("GET", f"/jobs/{job['jobId']}", None)
+                    self.assertEqual(int(status), 200)
+                    if latest["state"] not in {"queued", "running"}:
+                        break
+                    time.sleep(0.05)
+
+                self.assertEqual(latest["state"], "completed")
+                self.assertEqual(latest["progress"]["percent"], 100.0)
+                self.assertEqual(latest["progress"]["total"], 1)
+                self.assertEqual(latest["result"]["counts"]["processedItems"], 1)
 
 
 if __name__ == "__main__":

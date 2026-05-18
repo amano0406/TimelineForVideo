@@ -31,6 +31,7 @@ def refresh_configured_items(
     ocr_mode: str = "auto",
     audio_model_mode: str | None = None,
     reprocess_duplicates: bool = False,
+    run_id: str | None = None,
 ) -> dict[str, Any]:
     state_root = internal_state_root()
     with exclusive_lock(state_root, "catalog"):
@@ -43,6 +44,7 @@ def refresh_configured_items(
             ocr_mode=ocr_mode,
             audio_model_mode=audio_model_mode,
             reprocess_duplicates=reprocess_duplicates,
+            run_id=run_id,
         )
 
 
@@ -56,6 +58,7 @@ def refresh_configured_items_unlocked(
     ocr_mode: str,
     audio_model_mode: str | None,
     reprocess_duplicates: bool,
+    run_id: str | None,
 ) -> dict[str, Any]:
     if max_items is not None and max_items < 1:
         raise ValueError("max_items must be at least 1")
@@ -102,10 +105,26 @@ def refresh_configured_items_unlocked(
             "steps": {},
             "records": [],
         }
+        if run_id:
+            run_dir = state_root / "runs" / run_id
+            run_dir.mkdir(parents=True, exist_ok=True)
+            write_json(run_dir / "result.json", result)
+            write_run_status(
+                run_dir,
+                run_id=run_id,
+                state="completed",
+                current_stage="completed",
+                started_at=generated_at,
+                items_total=0,
+                items_done=0,
+                completed_at=utc_now_iso(),
+                message="No changed video files were found.",
+                progress_percent=100.0,
+            )
         write_worker_status(state_root, result)
         return result
 
-    run_id = unique_run_id()
+    run_id = run_id or unique_run_id()
     run_dir = state_root / "runs" / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     write_run_status(
@@ -116,6 +135,8 @@ def refresh_configured_items_unlocked(
         started_at=generated_at,
         items_total=len(candidates),
         items_done=0,
+        message="Preparing video refresh.",
+        progress_percent=1.0,
     )
 
     candidate_files = [row["videoFile"] for row in candidates]
@@ -128,6 +149,8 @@ def refresh_configured_items_unlocked(
         started_at=generated_at,
         items_total=len(candidates),
         items_done=0,
+        message="Sampling video frames.",
+        progress_percent=10.0,
     )
     sample_result = sample_video_files(
         candidate_files,
@@ -146,6 +169,8 @@ def refresh_configured_items_unlocked(
         items_total=len(candidates),
         items_done=0,
         step_status={"sample": sample_result["ok"]},
+        message="Reading text from sampled video frames.",
+        progress_percent=25.0,
     )
     frame_ocr_result = analyze_frame_ocr_outputs(
         settings["outputRoot"],
@@ -162,6 +187,8 @@ def refresh_configured_items_unlocked(
         items_total=len(candidates),
         items_done=0,
         step_status={"sample": sample_result["ok"], "frameOcr": frame_ocr_result["ok"]},
+        message="Analyzing video audio.",
+        progress_percent=45.0,
     )
     audio_result = analyze_audio_files(
         candidate_files,
@@ -185,6 +212,8 @@ def refresh_configured_items_unlocked(
             "frameOcr": frame_ocr_result["ok"],
             "audio": audio_result["ok"],
         },
+        message="Analyzing video activity.",
+        progress_percent=70.0,
     )
     activity_result = analyze_activity_files(
         candidate_files,
@@ -207,6 +236,8 @@ def refresh_configured_items_unlocked(
             "audio": audio_result["ok"],
             "activity": activity_result["ok"],
         },
+        message="Building Timeline item records.",
+        progress_percent=88.0,
     )
     item_result = refresh_item_records(
         candidate_files,
@@ -289,6 +320,8 @@ def refresh_configured_items_unlocked(
             "refresh": item_result["ok"],
         },
         failed_steps=failed_steps,
+        message="Video refresh completed." if ok else "Video refresh completed with errors.",
+        progress_percent=100.0,
     )
     write_worker_status(state_root, result)
     return result
@@ -398,6 +431,8 @@ def write_run_status(
     completed_at: str | None = None,
     step_status: dict[str, bool] | None = None,
     failed_steps: list[str] | None = None,
+    message: str = "",
+    progress_percent: float | None = None,
 ) -> None:
     payload: dict[str, Any] = {
         "schemaVersion": RUN_RESULT_SCHEMA_VERSION,
@@ -410,6 +445,10 @@ def write_run_status(
         "itemsDone": items_done,
         "itemsFailed": items_failed,
     }
+    if message:
+        payload["message"] = message
+    if progress_percent is not None:
+        payload["progressPercent"] = round(max(0.0, min(100.0, progress_percent)), 2)
     if completed_at is not None:
         payload["completedAt"] = completed_at
     if step_status is not None:
