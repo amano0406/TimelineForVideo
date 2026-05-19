@@ -247,12 +247,52 @@ class AudioModelTests(unittest.TestCase):
                 Path("normalized_audio.wav"),
                 compute_mode="cpu",
                 speaker_turns=[{"startSec": 0.0, "endSec": 5.0, "speaker": "SPEAKER_00"}],
+                speech_candidates=[{"startSec": 0.0, "endSec": 5.0}],
             )
 
         self.assertEqual(result["status"], "ok")
         self.assertEqual(result["language"]["detected"], "en")
         self.assertEqual(result["segments"][0]["text"], "hello world")
         self.assertEqual(result["segments"][0]["speaker"], "SPEAKER_00")
+        self.assertEqual(result["raw_segment_count"], 1)
+        self.assertEqual(result["rejected_segment_count"], 0)
+
+    def test_run_whisper_transcription_rejects_silence_hallucination(self) -> None:
+        class FakeWhisperSegment:
+            text = " ご視聴ありがとうございました "
+            avg_logprob = -0.4
+            no_speech_prob = 0.1
+
+            def __init__(self, start: float) -> None:
+                self.start = start
+                self.end = start + 2.0
+
+        class FakeInfo:
+            language = "ja"
+            language_probability = 0.98
+
+        class FakeModel:
+            def transcribe(self, *args, **kwargs):
+                return iter([
+                    FakeWhisperSegment(176.44),
+                    FakeWhisperSegment(206.44),
+                    FakeWhisperSegment(236.44),
+                ]), FakeInfo()
+
+        with patch("timeline_for_video_worker.audio_models.load_whisper_model", return_value=FakeModel()):
+            result = run_whisper_transcription(
+                Path("normalized_audio.wav"),
+                compute_mode="cpu",
+                speaker_turns=[],
+                speech_candidates=[{"startSec": 0.0, "endSec": 160.0}],
+            )
+
+        self.assertEqual(result["status"], "no_segments")
+        self.assertEqual(result["raw_segment_count"], 3)
+        self.assertEqual(result["segment_count"], 0)
+        self.assertEqual(result["rejected_segment_count"], 3)
+        self.assertIn("no_speech_candidate_overlap", result["rejectedSegments"][0]["rejectionReasons"])
+        self.assertIn("known_silence_hallucination_phrase", result["rejectedSegments"][0]["rejectionReasons"])
 
     def test_run_diarization_uses_preloaded_audio_input(self) -> None:
         class FakeSegment:

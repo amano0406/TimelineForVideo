@@ -24,6 +24,16 @@ TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD = "TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD"
 WORKER_FLAVOR_ENV = "TIMELINE_FOR_VIDEO_WORKER_FLAVOR"
 NONFATAL_DIARIZATION_STATUSES = {"ok", "no_speaker_turns"}
 NONFATAL_TRANSCRIPTION_STATUSES = {"ok", "no_segments"}
+MIN_TRANSCRIPT_SPEECH_OVERLAP_SEC = 0.1
+HIGH_NO_SPEECH_PROBABILITY = 0.6
+LOW_TRANSCRIPT_CONFIDENCE = -0.6
+KNOWN_SILENCE_HALLUCINATION_PHRASES = {
+    "ご視聴ありがとうございました",
+    "ご視聴ありがとうございます",
+    "ありがとうございました",
+    "Thank you for watching",
+    "Thanks for watching",
+}
 
 
 def normalize_audio_model_mode(mode: str | None) -> str:
@@ -163,6 +173,10 @@ def run_audio_reference_models(
             "mode": "whisper_transcript",
             "readableText": "",
             "segments": [],
+            "rejectedSegments": [],
+            "rawSegmentCount": 0,
+            "validatedSegmentCount": 0,
+            "rejectedSegmentCount": 0,
             "warnings": [],
         },
         "warnings": [],
@@ -215,9 +229,18 @@ def run_audio_reference_models(
         return result
 
     try:
-        transcription = run_whisper_transcription(audio_path, compute_mode, diarization.get("turns", []))
+        transcription = run_whisper_transcription(
+            audio_path,
+            compute_mode,
+            diarization.get("turns", []),
+            speech_candidates=speech_candidates,
+        )
         result["transcription"] = transcription
         result["text"]["segments"] = transcription.get("segments", [])
+        result["text"]["rejectedSegments"] = transcription.get("rejectedSegments", [])
+        result["text"]["rawSegmentCount"] = transcription.get("raw_segment_count", 0)
+        result["text"]["validatedSegmentCount"] = transcription.get("segment_count", 0)
+        result["text"]["rejectedSegmentCount"] = transcription.get("rejected_segment_count", 0)
         result["text"]["readableText"] = readable_text_from_segments(result["text"]["segments"])
     except Exception as exc:
         result["ok"] = False
@@ -266,8 +289,12 @@ def empty_transcription(status: str) -> dict[str, Any]:
             "detected": None,
             "probability": None,
         },
+        "rawSegments": [],
         "segments": [],
+        "rejectedSegments": [],
+        "raw_segment_count": 0,
         "segment_count": 0,
+        "rejected_segment_count": 0,
         "warning_count": 0,
         "warnings": [],
         "error": None,
@@ -446,6 +473,7 @@ def run_whisper_transcription(
     audio_path: Path,
     compute_mode: str,
     speaker_turns: list[dict[str, Any]],
+    speech_candidates: list[dict[str, float]] | None = None,
 ) -> dict[str, Any]:
     model = load_whisper_model(compute_mode)
     segments_iter, info = model.transcribe(
@@ -454,12 +482,15 @@ def run_whisper_transcription(
         vad_filter=False,
         word_timestamps=False,
     )
-    segments = [
+    raw_segments = [
         transcript_segment_from_whisper(index, segment, speaker_turns)
         for index, segment in enumerate(segments_iter, start=1)
         if str(getattr(segment, "text", "") or "").strip()
     ]
+    segments, rejected_segments = validate_transcript_segments(raw_segments, speech_candidates or [])
     warnings = [] if segments else ["Whisper transcription produced no text segments."]
+    if rejected_segments:
+        warnings.append(f"Whisper transcript validation rejected {len(rejected_segments)} segment(s).")
     return {
         "status": "ok" if segments else "no_segments",
         "backend": TRANSCRIPTION_BACKEND,
@@ -471,8 +502,12 @@ def run_whisper_transcription(
             "detected": getattr(info, "language", None),
             "probability": round(float(getattr(info, "language_probability", 0.0) or 0.0), 6),
         },
+        "rawSegments": raw_segments,
         "segments": segments,
+        "rejectedSegments": rejected_segments,
+        "raw_segment_count": len(raw_segments),
         "segment_count": len(segments),
+        "rejected_segment_count": len(rejected_segments),
         "warning_count": len(warnings),
         "warnings": warnings,
         "error": None,
@@ -490,6 +525,7 @@ def transcript_segment_from_whisper(index: int, segment: Any, speaker_turns: lis
         "speakerAssignment": assignment,
         "text": str(getattr(segment, "text", "") or "").strip(),
         "confidence": whisper_segment_confidence(segment),
+        "noSpeechProbability": whisper_no_speech_probability(segment),
         "index": index,
     }
 
@@ -500,6 +536,114 @@ def whisper_segment_confidence(segment: Any) -> float | None:
         return None
     try:
         return round(float(avg_logprob), 6)
+    except (TypeError, ValueError):
+        return None
+
+
+def whisper_no_speech_probability(segment: Any) -> float | None:
+    value = getattr(segment, "no_speech_prob", None)
+    if value is None:
+        return None
+    try:
+        return round(float(value), 6)
+    except (TypeError, ValueError):
+        return None
+
+
+def validate_transcript_segments(
+    raw_segments: list[dict[str, Any]],
+    speech_candidates: list[dict[str, float]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    validated: list[dict[str, Any]] = []
+    rejected: list[dict[str, Any]] = []
+    repeated_texts = repeated_normalized_texts(raw_segments)
+
+    for segment in raw_segments:
+        reasons: list[str] = []
+        start = float(segment.get("start_sec", 0.0) or 0.0)
+        end = float(segment.get("end_sec", start) or start)
+        text = str(segment.get("text") or "").strip()
+        normalized_text = normalize_transcript_text(text)
+        speech_overlap = interval_overlap_with_candidates(start, end, speech_candidates)
+        speaker_assignment = segment.get("speakerAssignment") if isinstance(segment.get("speakerAssignment"), dict) else {}
+        speaker_overlap = float(speaker_assignment.get("overlapSec", 0.0) or 0.0)
+        confidence = optional_float(segment.get("confidence"))
+        no_speech_probability = optional_float(segment.get("noSpeechProbability"))
+
+        reject = False
+        if speech_overlap < MIN_TRANSCRIPT_SPEECH_OVERLAP_SEC:
+            reasons.append("no_speech_candidate_overlap")
+            reject = True
+        if speaker_overlap <= 0:
+            reasons.append("no_speaker_overlap")
+        if confidence is not None and confidence < LOW_TRANSCRIPT_CONFIDENCE:
+            reasons.append("low_confidence")
+        if no_speech_probability is not None and no_speech_probability >= HIGH_NO_SPEECH_PROBABILITY:
+            reasons.append("high_no_speech_probability")
+            reject = True
+        if (
+            normalized_text in normalize_phrase_set(KNOWN_SILENCE_HALLUCINATION_PHRASES)
+            and normalized_text in repeated_texts
+            and (speech_overlap < MIN_TRANSCRIPT_SPEECH_OVERLAP_SEC or speaker_overlap <= 0)
+        ):
+            reasons.append("known_silence_hallucination_phrase")
+            reasons.append("repeated_hallucination_phrase")
+            reject = True
+
+        enriched = dict(segment)
+        enriched["validation"] = {
+            "speechOverlapSec": round(speech_overlap, 3),
+            "speakerOverlapSec": round(speaker_overlap, 3),
+            "reasons": reasons,
+        }
+        if reject:
+            enriched["validation"]["state"] = "rejected"
+            enriched["rejectionReasons"] = reasons
+            rejected.append(enriched)
+        else:
+            enriched["validation"]["state"] = "validated"
+            validated.append(enriched)
+
+    return validated, rejected
+
+
+def repeated_normalized_texts(segments: list[dict[str, Any]]) -> set[str]:
+    counts: dict[str, int] = {}
+    for segment in segments:
+        normalized = normalize_transcript_text(str(segment.get("text") or ""))
+        if normalized:
+            counts[normalized] = counts.get(normalized, 0) + 1
+    return {text for text, count in counts.items() if count >= 3}
+
+
+def normalize_phrase_set(phrases: set[str]) -> set[str]:
+    return {normalize_transcript_text(phrase) for phrase in phrases}
+
+
+def normalize_transcript_text(value: str) -> str:
+    return "".join(str(value or "").split()).casefold()
+
+
+def interval_overlap_with_candidates(
+    start: float,
+    end: float,
+    candidates: list[dict[str, float]],
+) -> float:
+    if end <= start:
+        return 0.0
+    overlap = 0.0
+    for candidate in candidates:
+        candidate_start = float(candidate.get("startSec", 0.0) or 0.0)
+        candidate_end = float(candidate.get("endSec", candidate_start) or candidate_start)
+        overlap += max(0.0, min(end, candidate_end) - max(start, candidate_start))
+    return overlap
+
+
+def optional_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
     except (TypeError, ValueError):
         return None
 
