@@ -151,6 +151,37 @@ class SamplingTests(unittest.TestCase):
             self.assertEqual(result["counts"]["failedItems"], 1)
             self.assertIn("ffmpeg_unavailable", result["records"][0]["warnings"])
 
+    def test_sample_video_files_reports_item_progress(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            input_root = root / "input"
+            input_root.mkdir()
+            first = input_root / "first.mp4"
+            second = input_root / "second.mp4"
+            first.write_bytes(b"video")
+            second.write_bytes(b"video")
+            fake_ffprobe = write_fake_ffprobe(root)
+            fake_ffmpeg = write_fake_ffmpeg(root)
+            events: list[dict[str, object]] = []
+
+            sample_video_files(
+                [
+                    video_file_from_path(first, str(input_root)),
+                    video_file_from_path(second, str(input_root)),
+                ],
+                str(root / "output"),
+                ffprobe_bin=fake_ffprobe,
+                ffmpeg_bin=fake_ffmpeg,
+                max_items=2,
+                samples_per_video=1,
+                progress_callback=events.append,
+            )
+
+            self.assertGreaterEqual(len(events), 4)
+            self.assertEqual(events[0]["itemsDone"], 0)
+            self.assertEqual(events[-1]["itemsDone"], 2)
+            self.assertEqual(events[-1]["total"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()

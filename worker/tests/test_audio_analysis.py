@@ -195,6 +195,59 @@ class AudioAnalysisTests(unittest.TestCase):
             self.assertEqual(payload["transcription"]["status"], "not_configured")
             self.assertTrue(payload["ok"])
 
+    def test_required_audio_models_warn_when_duration_is_unknown(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "input" / "clip.mkv"
+            source.parent.mkdir()
+            source.write_bytes(b"video")
+            unknown_duration = {
+                "streams": FFPROBE_WITH_AUDIO["streams"],
+                "format": {"format_name": "matroska,webm", "size": "5000000000"},
+            }
+
+            result = analyze_audio_files(
+                [video_file_from_path(source, str(source.parent))],
+                str(root / "output"),
+                ffprobe_bin=fake_ffprobe(root, unknown_duration),
+                ffmpeg_bin=fake_ffmpeg(root),
+                max_items=1,
+                settings={"computeMode": "cpu", "huggingFaceToken": ""},
+                audio_model_mode="required",
+            )
+
+            self.assertTrue(result["ok"])
+            record = result["records"][0]
+            self.assertIn("audio_models_skipped_duration_unknown", record["warnings"])
+            self.assertEqual(record["audioModels"]["mode"], "off")
+            self.assertTrue(record["audioModels"]["ok"])
+            self.assertIn("duration_unknown_required_audio_models", record["audioModels"]["warnings"])
+
+    def test_audio_analysis_reports_item_progress(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "input" / "clip.mp4"
+            source.parent.mkdir()
+            source.write_bytes(b"video")
+            events: list[dict[str, object]] = []
+
+            analyze_audio_files(
+                [video_file_from_path(source, str(source.parent))],
+                str(root / "output"),
+                ffprobe_bin=fake_ffprobe(root),
+                ffmpeg_bin=fake_ffmpeg(root),
+                max_items=1,
+                settings={"computeMode": "cpu", "huggingFaceToken": ""},
+                audio_model_mode="off",
+                progress_callback=events.append,
+            )
+
+            stages = [event.get("itemStage") for event in events]
+            self.assertIn("prepare", stages)
+            self.assertIn("extract_audio", stages)
+            self.assertIn("completed", stages)
+            self.assertEqual(events[-1]["itemsDone"], 1)
+
     def test_required_audio_models_fail_when_video_has_no_audio_stream(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

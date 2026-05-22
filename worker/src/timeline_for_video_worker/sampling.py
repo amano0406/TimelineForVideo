@@ -4,11 +4,11 @@ from math import ceil, sqrt
 import json
 from pathlib import Path
 import subprocess
-from typing import Any
+from typing import Any, Callable
 
 from . import __version__
 from .discovery import VideoFile, resolve_configured_path
-from .probe import command_prefix, probe_video_files, utc_now_iso
+from .probe import analysis_source_path, command_prefix, probe_video_files, utc_now_iso
 from .settings import PRODUCT_NAME
 
 
@@ -177,6 +177,7 @@ def sample_video_files(
     ffmpeg_bin: str = "ffmpeg",
     max_items: int = DEFAULT_MAX_ITEMS,
     samples_per_video: int = DEFAULT_SAMPLES_PER_VIDEO,
+    progress_callback: Callable[[dict[str, Any]], None] | None = None,
 ) -> dict[str, Any]:
     if max_items < 1:
         raise ValueError("max_items must be at least 1")
@@ -184,11 +185,26 @@ def sample_video_files(
 
     generated_at = utc_now_iso()
     output_root = resolve_configured_path(output_root_text)
-    probe_result = probe_video_files(video_files, ffprobe_bin=ffprobe_bin, max_items=max_items)
+    probe_result = probe_video_files(
+        video_files,
+        ffprobe_bin=ffprobe_bin,
+        ffmpeg_bin=ffmpeg_bin,
+        output_root_text=output_root_text,
+        max_items=max_items,
+    )
     ffmpeg_status = ffmpeg_version(ffmpeg_bin)
     records: list[dict[str, Any]] = []
 
-    for probe_record in probe_result["records"]:
+    total = len(probe_result["records"])
+    for index, probe_record in enumerate(probe_result["records"], start=1):
+        emit_progress(
+            progress_callback,
+            total=total,
+            items_done=index - 1,
+            item_stage="sample_frames",
+            current_item=str(probe_record.get("sourceIdentity", {}).get("sourcePath") or probe_record.get("itemId") or ""),
+            message="Sampling video frames.",
+        )
         records.append(
             sample_probe_record(
                 probe_record,
@@ -199,6 +215,14 @@ def sample_video_files(
                 samples_per_video,
                 generated_at,
             )
+        )
+        emit_progress(
+            progress_callback,
+            total=total,
+            items_done=index,
+            item_stage="completed",
+            current_item=str(probe_record.get("sourceIdentity", {}).get("sourcePath") or probe_record.get("itemId") or ""),
+            message="Sampled video frames.",
         )
 
     failed_items = sum(1 for record in records if not record["ok"])
@@ -317,7 +341,7 @@ def sample_probe_record(
     for index, time_sec in enumerate(sample_times, start=1):
         output_path = frames_dir / f"frame-{index:06d}.jpg"
         extract_result = run_ffmpeg_frame_extract(
-            probe_record["sourceIdentity"]["resolvedPath"],
+            analysis_source_path(probe_record),
             output_path,
             time_sec,
             ffmpeg_bin,
@@ -355,6 +379,28 @@ def sample_probe_record(
         and record["contactSheet"]["ok"]
     )
     return write_frame_samples(record, frame_samples_path)
+
+
+def emit_progress(
+    progress_callback: Callable[[dict[str, Any]], None] | None,
+    *,
+    total: int,
+    items_done: int,
+    item_stage: str,
+    current_item: str,
+    message: str,
+) -> None:
+    if progress_callback is None:
+        return
+    progress_callback(
+        {
+            "total": total,
+            "itemsDone": items_done,
+            "itemStage": item_stage,
+            "currentItem": current_item,
+            "message": message,
+        }
+    )
 
 
 def write_frame_samples(record: dict[str, Any], frame_samples_path: Path) -> dict[str, Any]:

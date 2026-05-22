@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 import re
 import subprocess
@@ -8,8 +9,9 @@ from typing import Any
 
 from . import __version__
 from .audio_models import run_audio_reference_models
+from .audio_models import run_audio_reference_models_isolated
 from .discovery import VideoFile, resolve_configured_path
-from .probe import command_prefix, probe_video_files, utc_now_iso
+from .probe import analysis_source_path, command_prefix, probe_video_files, utc_now_iso
 from .settings import PRODUCT_NAME
 
 
@@ -26,6 +28,10 @@ MIN_FFMPEG_TIMEOUT_SEC = 180
 MAX_FFMPEG_TIMEOUT_SEC = 3600
 FFMPEG_TIMEOUT_DURATION_DIVISOR = 90
 FFMPEG_TIMEOUT_MARGIN_SEC = 120
+FFMPEG_TIMEOUT_SIZE_DIVISOR_BYTES = 5 * 1024 * 1024
+LARGE_UNKNOWN_DURATION_AUDIO_ARTIFACT_SKIP_BYTES = 1024 * 1024 * 1024
+MAX_AUDIO_MODEL_DURATION_SEC = 3 * 60 * 60
+MAX_AUDIO_MODEL_SPEECH_CANDIDATES = 1500
 
 # These identifiers are implemented locally. TimelineForVideo does not import
 # or share TimelineForAudio/Image implementation code.
@@ -33,6 +39,7 @@ AUDIO_REFERENCE_DIARIZATION_MODEL_ID = "pyannote/speaker-diarization-community-1
 AUDIO_REFERENCE_TRANSCRIPTION_BACKEND = "faster-whisper"
 AUDIO_REFERENCE_TRANSCRIPTION_MODEL_ID = "Systran/faster-whisper-large-v3"
 AUDIO_REFERENCE_TRANSCRIPTION_MODEL_ALIAS = "faster_whisper_large_v3"
+ProgressCallback = Callable[[dict[str, Any]], None]
 
 
 def analyze_audio_files(
@@ -43,25 +50,77 @@ def analyze_audio_files(
     max_items: int | None = None,
     settings: dict[str, Any] | None = None,
     audio_model_mode: str | None = None,
+    progress_callback: ProgressCallback | None = None,
 ) -> dict[str, Any]:
     if max_items is not None and max_items < 1:
         raise ValueError("max_items must be at least 1")
 
     generated_at = utc_now_iso()
     output_root = resolve_configured_path(output_root_text)
-    probe_result = probe_video_files(video_files, ffprobe_bin=ffprobe_bin, max_items=max_items)
-    records = [
-        analyze_probe_record_audio(
-            probe_record,
-            output_root=output_root,
-            output_root_text=output_root_text,
-            ffmpeg_bin=ffmpeg_bin,
-            generated_at=generated_at,
-            settings=settings or {},
-            audio_model_mode=audio_model_mode,
+    probe_result = probe_video_files(
+        video_files,
+        ffprobe_bin=ffprobe_bin,
+        ffmpeg_bin=ffmpeg_bin,
+        output_root_text=output_root_text,
+        max_items=max_items,
+    )
+    probe_records = probe_result["records"]
+    records: list[dict[str, Any]] = []
+    total = len(probe_records)
+    for index, probe_record in enumerate(probe_records, start=1):
+        source_path = source_path_from_probe_record(probe_record)
+        item_id = str(probe_record.get("itemId") or "")
+        notify_progress(
+            progress_callback,
+            index=index,
+            total=total,
+            itemsDone=index - 1,
+            itemId=item_id,
+            currentItem=source_path,
+            itemStage="prepare",
+            message=f"Preparing video audio {index}/{total}: {Path(source_path).name}",
         )
-        for probe_record in probe_result["records"]
-    ]
+
+        def item_progress(
+            event: dict[str, Any],
+            *,
+            item_index: int = index,
+            item_total: int = total,
+            current_item: str = source_path,
+            current_item_id: str = item_id,
+        ) -> None:
+            notify_progress(
+                progress_callback,
+                index=item_index,
+                total=item_total,
+                itemsDone=item_index - 1,
+                itemId=current_item_id,
+                currentItem=current_item,
+                **event,
+            )
+
+        records.append(
+            analyze_probe_record_audio(
+                probe_record,
+                output_root=output_root,
+                output_root_text=output_root_text,
+                ffmpeg_bin=ffmpeg_bin,
+                generated_at=generated_at,
+                settings=settings or {},
+                audio_model_mode=audio_model_mode,
+                progress_callback=item_progress,
+            )
+        )
+        notify_progress(
+            progress_callback,
+            index=index,
+            total=total,
+            itemsDone=index,
+            itemId=item_id,
+            currentItem=source_path,
+            itemStage="completed",
+            message=f"Analyzed video audio {index}/{total}: {Path(source_path).name}",
+        )
     failed_items = sum(1 for record in records if not record["ok"])
     return {
         "schemaVersion": AUDIO_ANALYSIS_RESULT_SCHEMA_VERSION,
@@ -97,6 +156,7 @@ def analyze_probe_record_audio(
     generated_at: str,
     settings: dict[str, Any],
     audio_model_mode: str | None,
+    progress_callback: ProgressCallback | None = None,
 ) -> dict[str, Any]:
     item_id = probe_record["itemId"]
     item_root = output_root / "items" / item_id
@@ -231,26 +291,31 @@ def analyze_probe_record_audio(
         record["ok"] = model_result["ok"]
         return write_audio_analysis(record, audio_analysis_path)
 
+    notify_progress(progress_callback, itemStage="extract_audio", message="Extracting review audio.")
     extract_result = run_audio_extract(
-        probe_record["sourceIdentity"]["resolvedPath"],
+        analysis_source_path(probe_record),
         audio_artifact_path,
         ffmpeg_bin=ffmpeg_bin,
         duration_sec=duration_sec,
+        source_size_bytes=int(probe_record["sourceIdentity"].get("sizeBytes") or 0),
     )
     record["audioArtifact"].update(extract_result)
     if not extract_result["ok"]:
         warnings.append("audio_extract_failed")
 
+    notify_progress(progress_callback, itemStage="normalize_audio", message="Preparing normalized audio for models.")
     model_input_result = run_normalized_audio_extract(
-        probe_record["sourceIdentity"]["resolvedPath"],
+        analysis_source_path(probe_record),
         audio_model_input_path,
         ffmpeg_bin=ffmpeg_bin,
         duration_sec=duration_sec,
+        source_size_bytes=int(probe_record["sourceIdentity"].get("sizeBytes") or 0),
     )
     record["audioModelInput"].update(model_input_result)
     if not model_input_result["ok"]:
         warnings.append("audio_normalization_failed")
 
+    notify_progress(progress_callback, itemStage="detect_speech", message="Detecting speech activity.")
     speech_result = run_silence_detect(
         str(audio_model_input_path),
         duration_sec=duration_sec,
@@ -267,14 +332,30 @@ def analyze_probe_record_audio(
         warnings.append("speech_activity_detection_failed")
 
     try:
-        model_result = run_audio_reference_models(
-            audio_path=audio_model_input_path,
-            speech_candidates=speech_result["speechCandidates"],
-            source_name=probe_record["sourceIdentity"]["sourcePath"],
-            settings=settings,
-            mode=audio_model_mode,
-        )
+        skip_model_reason = audio_model_skip_reason(duration_sec, speech_result)
+        if skip_model_reason:
+            warnings.append(f"audio_models_skipped_{skip_model_reason}")
+            notify_progress(progress_callback, itemStage="audio_models_skipped", message=f"Skipping audio models: {skip_model_reason}.")
+            model_result = run_audio_reference_models(
+                audio_path=audio_model_input_path,
+                speech_candidates=speech_result["speechCandidates"],
+                source_name=probe_record["sourceIdentity"]["sourcePath"],
+                settings=settings,
+                mode="off",
+            )
+            if skip_model_reason == "duration_unknown" and str(audio_model_mode or "required").strip().casefold() == "required":
+                model_result["warnings"].append("duration_unknown_required_audio_models")
+        else:
+            notify_progress(progress_callback, itemStage="audio_models", message="Running diarization and transcription models.")
+            model_result = run_audio_reference_models_isolated(
+                audio_path=audio_model_input_path,
+                speech_candidates=speech_result["speechCandidates"],
+                source_name=probe_record["sourceIdentity"]["sourcePath"],
+                settings=settings,
+                mode=audio_model_mode,
+            )
     finally:
+        notify_progress(progress_callback, itemStage="cleanup_audio", message="Cleaning temporary audio.")
         cleanup_result = remove_temporary_audio(audio_model_input_path)
         record["audioModelInput"].update(cleanup_result)
     record["audioModels"] = model_result
@@ -283,12 +364,48 @@ def analyze_probe_record_audio(
     record["text"] = model_result["text"]
     warnings.extend(model_result.get("warnings", []))
 
-    record["ok"] = extract_result["ok"] and model_input_result["ok"] and speech_result["ok"] and model_result["ok"]
+    audio_artifact_required = bool(speech_result.get("speechCandidates"))
+    record["ok"] = (
+        (extract_result["ok"] or not audio_artifact_required)
+        and model_input_result["ok"]
+        and speech_result["ok"]
+        and model_result["ok"]
+    )
     return write_audio_analysis(record, audio_analysis_path)
 
 
-def ffmpeg_timeout_seconds(duration_sec: float | None) -> int:
+def source_path_from_probe_record(probe_record: dict[str, Any]) -> str:
+    identity = probe_record.get("sourceIdentity") if isinstance(probe_record.get("sourceIdentity"), dict) else {}
+    return str(identity.get("sourcePath") or identity.get("resolvedPath") or probe_record.get("sourcePath") or "")
+
+
+def notify_progress(progress_callback: ProgressCallback | None, **payload: Any) -> None:
+    if progress_callback is None:
+        return
+    try:
+        progress_callback({key: value for key, value in payload.items() if value is not None})
+    except Exception:
+        pass
+
+
+def audio_model_skip_reason(duration_sec: float | None, speech_result: dict[str, Any]) -> str:
     if not isinstance(duration_sec, (int, float)) or duration_sec <= 0:
+        return "duration_unknown"
+    if speech_result.get("ok") and not speech_result.get("speechCandidates"):
+        return "no_speech_candidates"
+    if duration_sec > MAX_AUDIO_MODEL_DURATION_SEC:
+        return "duration_too_long"
+    speech_candidates = speech_result.get("speechCandidates")
+    if isinstance(speech_candidates, list) and len(speech_candidates) > MAX_AUDIO_MODEL_SPEECH_CANDIDATES:
+        return "too_many_speech_candidates"
+    return ""
+
+
+def ffmpeg_timeout_seconds(duration_sec: float | None, source_size_bytes: int | None = None) -> int:
+    if not isinstance(duration_sec, (int, float)) or duration_sec <= 0:
+        if isinstance(source_size_bytes, int) and source_size_bytes > 0:
+            scaled_by_size = int(source_size_bytes / FFMPEG_TIMEOUT_SIZE_DIVISOR_BYTES) + FFMPEG_TIMEOUT_MARGIN_SEC
+            return min(MAX_FFMPEG_TIMEOUT_SEC, max(MIN_FFMPEG_TIMEOUT_SEC, scaled_by_size))
         return MIN_FFMPEG_TIMEOUT_SEC
     scaled = int(duration_sec / FFMPEG_TIMEOUT_DURATION_DIVISOR) + FFMPEG_TIMEOUT_MARGIN_SEC
     return min(MAX_FFMPEG_TIMEOUT_SEC, max(MIN_FFMPEG_TIMEOUT_SEC, scaled))
@@ -301,9 +418,27 @@ def remove_partial_output(path: Path) -> None:
         pass
 
 
-def run_audio_extract(source_path: str, output_path: Path, ffmpeg_bin: str, duration_sec: float | None) -> dict[str, Any]:
+def run_audio_extract(
+    source_path: str,
+    output_path: Path,
+    ffmpeg_bin: str,
+    duration_sec: float | None,
+    source_size_bytes: int | None = None,
+) -> dict[str, Any]:
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    timeout_sec = ffmpeg_timeout_seconds(duration_sec)
+    timeout_sec = ffmpeg_timeout_seconds(duration_sec, source_size_bytes)
+    if (
+        not isinstance(duration_sec, (int, float))
+        and isinstance(source_size_bytes, int)
+        and source_size_bytes >= LARGE_UNKNOWN_DURATION_AUDIO_ARTIFACT_SKIP_BYTES
+    ):
+        return {
+            "ok": False,
+            "command": [],
+            "timeoutSec": timeout_sec,
+            "skipped": True,
+            "error": "ffmpeg audio extraction skipped for large video with unknown duration",
+        }
     command = command_prefix(ffmpeg_bin) + [
         "-nostdin",
         "-hide_banner",
@@ -348,9 +483,10 @@ def run_normalized_audio_extract(
     output_path: Path,
     ffmpeg_bin: str,
     duration_sec: float | None,
+    source_size_bytes: int | None = None,
 ) -> dict[str, Any]:
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    timeout_sec = ffmpeg_timeout_seconds(duration_sec)
+    timeout_sec = ffmpeg_timeout_seconds(duration_sec, source_size_bytes)
     command = command_prefix(ffmpeg_bin) + [
         "-nostdin",
         "-hide_banner",

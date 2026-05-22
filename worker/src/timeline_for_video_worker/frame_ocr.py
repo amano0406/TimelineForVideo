@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import shutil
-from typing import Any
+from typing import Any, Callable
 
 from . import __version__
 from .discovery import resolve_configured_path
@@ -55,6 +55,7 @@ def analyze_frame_ocr_outputs(
     max_items: int | None = None,
     mode: str = "auto",
     item_ids: set[str] | None = None,
+    progress_callback: Callable[[dict[str, Any]], None] | None = None,
 ) -> dict[str, Any]:
     if max_items is not None and max_items < 1:
         raise ValueError("max_items must be at least 1")
@@ -66,10 +67,26 @@ def analyze_frame_ocr_outputs(
     if item_ids is not None:
         roots = [root for root in roots if root.name in item_ids]
     selected_roots = roots[:max_items] if max_items is not None else roots
-    records = [
-        analyze_item_frame_ocr(item_root, mode=mode, generated_at=generated_at)
-        for item_root in selected_roots
-    ]
+    records: list[dict[str, Any]] = []
+    total = len(selected_roots)
+    for index, item_root in enumerate(selected_roots, start=1):
+        emit_progress(
+            progress_callback,
+            total=total,
+            items_done=index - 1,
+            item_stage="ocr_frames",
+            current_item=item_root.name,
+            message="Reading text from sampled video frames.",
+        )
+        records.append(analyze_item_frame_ocr(item_root, mode=mode, generated_at=generated_at))
+        emit_progress(
+            progress_callback,
+            total=total,
+            items_done=index,
+            item_stage="completed",
+            current_item=item_root.name,
+            message="Read text from sampled video frames.",
+        )
     failed_items = sum(1 for record in records if not record["ok"])
     return {
         "schemaVersion": FRAME_OCR_RESULT_SCHEMA_VERSION,
@@ -95,6 +112,28 @@ def analyze_frame_ocr_outputs(
         },
         "records": records,
     }
+
+
+def emit_progress(
+    progress_callback: Callable[[dict[str, Any]], None] | None,
+    *,
+    total: int,
+    items_done: int,
+    item_stage: str,
+    current_item: str,
+    message: str,
+) -> None:
+    if progress_callback is None:
+        return
+    progress_callback(
+        {
+            "total": total,
+            "itemsDone": items_done,
+            "itemStage": item_stage,
+            "currentItem": current_item,
+            "message": message,
+        }
+    )
 
 
 def analyze_item_frame_ocr(item_root: Path, mode: str, generated_at: str) -> dict[str, Any]:

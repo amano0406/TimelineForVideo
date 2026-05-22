@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import sys
 import threading
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -19,7 +21,8 @@ from .model_inventory import build_model_inventory
 from .pagination import paginate_rows
 from .processor import refresh_configured_items
 from .processor import list_runs
-from .processor import show_run
+from .processor import mark_stale_running_runs
+from .processor import read_json
 from .processor import unique_run_id
 from .processor import write_run_status
 from .sampling import DEFAULT_SAMPLES_PER_VIDEO
@@ -33,7 +36,7 @@ from .settings import save_settings
 from .settings import settings_example_path
 from .settings import settings_path
 
-_ACTIVE_JOBS: dict[str, threading.Thread] = {}
+_ACTIVE_JOBS: dict[str, Any] = {}
 _ACTIVE_JOBS_LOCK = threading.Lock()
 
 
@@ -250,25 +253,23 @@ def jobs_start_payload(request: dict[str, Any]) -> dict[str, Any]:
             message="Video refresh job has been queued.",
             progress_percent=0.0,
         )
-        thread = threading.Thread(
-            target=run_refresh_job,
-            args=(job_id, request.get("options") if isinstance(request.get("options"), dict) else request),
-            name=f"timeline-for-video-job-{job_id}",
-            daemon=True,
-        )
-        _ACTIVE_JOBS[job_id] = thread
-        thread.start()
+        options = request.get("options") if isinstance(request.get("options"), dict) else request
+        options_path = run_dir / "options.json"
+        options_path.write_text(json.dumps(options, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        _ACTIVE_JOBS[job_id] = start_refresh_job_process(job_id, options_path, run_dir)
 
     return job_status_payload(job_id)
 
 
 def jobs_list_payload() -> dict[str, Any]:
+    mark_stale_running_runs(internal_state_root(), active_run_ids=active_job_ids())
     payload = list_runs(limit=None)
     payload["activeJobId"] = active_job_id()
     return payload
 
 
 def jobs_active_payload() -> dict[str, Any]:
+    mark_stale_running_runs(internal_state_root(), active_run_ids=active_job_ids())
     active = active_job_id()
     if not active:
         return {
@@ -327,22 +328,44 @@ def run_refresh_job(job_id: str, options: dict[str, Any]) -> None:
             _ACTIVE_JOBS.pop(job_id, None)
 
 
+def start_refresh_job_process(job_id: str, options_path: Path, run_dir: Path) -> subprocess.Popen[Any]:
+    env = os.environ.copy()
+    source_root = str(Path(__file__).resolve().parents[1])
+    current_pythonpath = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = source_root if not current_pythonpath else source_root + os.pathsep + current_pythonpath
+    with open(run_dir / "job.stdout.log", "ab") as stdout, open(run_dir / "job.stderr.log", "ab") as stderr:
+        return subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "timeline_for_video_worker.job_runner",
+                job_id,
+                str(options_path),
+            ],
+            stdout=stdout,
+            stderr=stderr,
+            env=env,
+        )
+
+
 def job_status_payload(job_id: str) -> dict[str, Any]:
     job_id = job_id.strip()
     if not job_id:
         return error_payload("Job id is required.", "ValueError") | {"ok": False}
-    try:
-        payload = show_run(job_id)
-    except FileNotFoundError as exc:
-        return error_payload(str(exc), exc.__class__.__name__) | {"ok": False}
+    mark_stale_running_runs(internal_state_root(), active_run_ids=active_job_ids())
+    run_dir = internal_state_root() / "runs" / job_id
+    status = read_json(run_dir / "status.json")
+    if status is None:
+        return error_payload(f"Run not found: {job_id}", "FileNotFoundError") | {"ok": False}
 
-    status = payload.get("status") if isinstance(payload.get("status"), dict) else {}
-    result = payload.get("result") if isinstance(payload.get("result"), dict) else None
+    result = compact_job_result(job_id, status, run_dir / "result.json")
     state = str(status.get("state") or (result or {}).get("state") or "unknown")
     stage = str(status.get("currentStage") or "")
     error = None
-    if state in {"failed", "completed_with_errors"}:
+    if state in {"failed", "completed_with_errors", "interrupted"}:
         error = str(status.get("message") or (result or {}).get("error") or "")
+    if state in {"completed", "completed_with_errors", "failed", "interrupted", "skipped_no_changes"}:
+        reap_completed_job(job_id)
     return {
         "schemaVersion": "timeline.product_job.v1",
         "productId": "video",
@@ -370,22 +393,79 @@ def job_status_payload(job_id: str) -> dict[str, Any]:
     }
 
 
+def compact_job_result(job_id: str, status: dict[str, Any], result_path: Path) -> dict[str, Any]:
+    state = str(status.get("state") or "unknown")
+    items_total = int(status.get("itemsTotal") or 0)
+    items_done = int(status.get("itemsDone") or 0)
+    items_failed = int(status.get("itemsFailed") or 0)
+    processed_items = max(items_done, items_done + items_failed if state in {"completed_with_errors", "failed"} else items_done)
+    return {
+        "schemaVersion": "timeline_for_video.run_result_summary.v1",
+        "runId": job_id,
+        "state": state,
+        "ok": state in {"completed", "skipped_no_changes"},
+        "failedSteps": status.get("failedSteps") if isinstance(status.get("failedSteps"), list) else [],
+        "counts": {
+            "sourceFiles": items_total,
+            "candidateItems": items_total,
+            "processedItems": processed_items,
+            "skippedItems": 0,
+            "failedItems": items_failed,
+            "completedItems": items_done,
+        },
+        "resultPath": str(result_path) if result_path.exists() else "",
+        "resultIncluded": False,
+    }
+
+
 def active_job_id() -> str:
     with _ACTIVE_JOBS_LOCK:
         return active_job_id_unlocked()
 
 
 def active_job_id_unlocked() -> str:
+    active_ids = active_job_ids_unlocked()
+    return next(iter(active_ids), "")
+
+
+def active_job_ids() -> set[str]:
+    with _ACTIVE_JOBS_LOCK:
+        return active_job_ids_unlocked()
+
+
+def active_job_ids_unlocked() -> set[str]:
     dead: list[str] = []
-    active = ""
-    for job_id, thread in _ACTIVE_JOBS.items():
-        if thread.is_alive():
-            active = job_id
-            break
-        dead.append(job_id)
+    active: set[str] = set()
+    for job_id, job in _ACTIVE_JOBS.items():
+        if is_active_job_handle(job):
+            active.add(job_id)
+        else:
+            dead.append(job_id)
     for job_id in dead:
         _ACTIVE_JOBS.pop(job_id, None)
     return active
+
+
+def reap_completed_job(job_id: str) -> None:
+    with _ACTIVE_JOBS_LOCK:
+        job = _ACTIVE_JOBS.get(job_id)
+        if job is None:
+            return
+        if hasattr(job, "poll") and job.poll() is None:
+            try:
+                job.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                return
+        if not is_active_job_handle(job):
+            _ACTIVE_JOBS.pop(job_id, None)
+
+
+def is_active_job_handle(job: Any) -> bool:
+    if hasattr(job, "poll"):
+        return job.poll() is None
+    if hasattr(job, "is_alive"):
+        return bool(job.is_alive())
+    return False
 
 
 def items_download_payload(request: dict[str, Any]) -> dict[str, Any]:

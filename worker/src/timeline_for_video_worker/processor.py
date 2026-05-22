@@ -68,7 +68,8 @@ def refresh_configured_items_unlocked(
     output_root.mkdir(parents=True, exist_ok=True)
     state_root = internal_state_root()
     state_root.mkdir(parents=True, exist_ok=True)
-    mark_stale_running_runs(state_root)
+    active_run_ids = {run_id} if run_id else None
+    mark_stale_running_runs(state_root, active_run_ids=active_run_ids)
 
     discovery = discover_video_files(settings)
     catalog = load_catalog(state_root)
@@ -152,6 +153,28 @@ def refresh_configured_items_unlocked(
         message="Sampling video frames.",
         progress_percent=10.0,
     )
+
+    def sample_progress(event: dict[str, Any]) -> None:
+        total = max(1, int(event.get("total") or len(candidates)))
+        done = max(0, min(total, int(event.get("itemsDone") or 0)))
+        progress_percent = 10.0 + ((done / total) * 15.0)
+        item_stage = str(event.get("itemStage") or "").strip()
+        message = str(event.get("message") or "Sampling video frames.")
+        if item_stage and item_stage not in {"completed"}:
+            message = f"{message} ({item_stage})"
+        write_run_status(
+            run_dir,
+            run_id=run_id,
+            state="running",
+            current_stage="sample",
+            started_at=generated_at,
+            items_total=len(candidates),
+            items_done=done,
+            current_item=str(event.get("currentItem") or "") or None,
+            message=message,
+            progress_percent=progress_percent,
+        )
+
     sample_result = sample_video_files(
         candidate_files,
         settings["outputRoot"],
@@ -159,6 +182,7 @@ def refresh_configured_items_unlocked(
         ffmpeg_bin=ffmpeg_bin,
         max_items=len(candidate_files),
         samples_per_video=samples_per_video,
+        progress_callback=sample_progress,
     )
     write_run_status(
         run_dir,
@@ -172,11 +196,35 @@ def refresh_configured_items_unlocked(
         message="Reading text from sampled video frames.",
         progress_percent=25.0,
     )
+
+    def frame_ocr_progress(event: dict[str, Any]) -> None:
+        total = max(1, int(event.get("total") or len(candidates)))
+        done = max(0, min(total, int(event.get("itemsDone") or 0)))
+        progress_percent = 25.0 + ((done / total) * 20.0)
+        item_stage = str(event.get("itemStage") or "").strip()
+        message = str(event.get("message") or "Reading text from sampled video frames.")
+        if item_stage and item_stage not in {"completed"}:
+            message = f"{message} ({item_stage})"
+        write_run_status(
+            run_dir,
+            run_id=run_id,
+            state="running",
+            current_stage="frame_ocr",
+            started_at=generated_at,
+            items_total=len(candidates),
+            items_done=done,
+            current_item=str(event.get("currentItem") or "") or None,
+            step_status={"sample": sample_result["ok"]},
+            message=message,
+            progress_percent=progress_percent,
+        )
+
     frame_ocr_result = analyze_frame_ocr_outputs(
         settings["outputRoot"],
         max_items=None,
         mode=ocr_mode,
         item_ids=candidate_item_ids,
+        progress_callback=frame_ocr_progress,
     )
     write_run_status(
         run_dir,
@@ -190,6 +238,29 @@ def refresh_configured_items_unlocked(
         message="Analyzing video audio.",
         progress_percent=45.0,
     )
+
+    def audio_progress(event: dict[str, Any]) -> None:
+        total = max(1, int(event.get("total") or len(candidates)))
+        done = max(0, min(total, int(event.get("itemsDone") or 0)))
+        progress_percent = 45.0 + ((done / total) * 25.0)
+        item_stage = str(event.get("itemStage") or "").strip()
+        message = str(event.get("message") or "Analyzing video audio.")
+        if item_stage and item_stage not in {"prepare", "completed"}:
+            message = f"{message} ({item_stage})"
+        write_run_status(
+            run_dir,
+            run_id=run_id,
+            state="running",
+            current_stage="audio",
+            started_at=generated_at,
+            items_total=len(candidates),
+            items_done=done,
+            current_item=str(event.get("currentItem") or "") or None,
+            step_status={"sample": sample_result["ok"], "frameOcr": frame_ocr_result["ok"]},
+            message=message,
+            progress_percent=progress_percent,
+        )
+
     audio_result = analyze_audio_files(
         candidate_files,
         settings["outputRoot"],
@@ -198,6 +269,7 @@ def refresh_configured_items_unlocked(
         max_items=len(candidate_files),
         settings=settings,
         audio_model_mode=audio_model_mode,
+        progress_callback=audio_progress,
     )
     write_run_status(
         run_dir,
@@ -243,6 +315,7 @@ def refresh_configured_items_unlocked(
         candidate_files,
         settings["outputRoot"],
         ffprobe_bin=ffprobe_bin,
+        ffmpeg_bin=ffmpeg_bin,
         max_items=len(candidate_files),
     )
 
@@ -428,6 +501,7 @@ def write_run_status(
     items_total: int,
     items_done: int,
     items_failed: int = 0,
+    current_item: str | None = None,
     completed_at: str | None = None,
     step_status: dict[str, bool] | None = None,
     failed_steps: list[str] | None = None,
@@ -449,6 +523,8 @@ def write_run_status(
         payload["message"] = message
     if progress_percent is not None:
         payload["progressPercent"] = round(max(0.0, min(100.0, progress_percent)), 2)
+    if current_item:
+        payload["currentItem"] = current_item
     if completed_at is not None:
         payload["completedAt"] = completed_at
     if step_status is not None:
@@ -473,18 +549,22 @@ def load_catalog(state_root: Path) -> dict[str, Any]:
     return payload
 
 
-def mark_stale_running_runs(state_root: Path) -> None:
+def mark_stale_running_runs(state_root: Path, active_run_ids: set[str] | None = None) -> None:
     runs_root = state_root / "runs"
     if not runs_root.is_dir():
         return
+    active_run_ids = active_run_ids or set()
     for status_path in runs_root.glob("*/status.json"):
         status = read_json(status_path)
-        if not status or status.get("state") != "running":
+        if not status or status.get("state") not in {"queued", "running"}:
+            continue
+        if status_path.parent.name in active_run_ids:
             continue
         status["state"] = "interrupted"
         status["currentStage"] = "interrupted"
         status["updatedAt"] = utc_now_iso()
         status["completedAt"] = status["updatedAt"]
+        status["message"] = "Worker stopped before the job completed. Queue a new refresh to retry."
         status.setdefault("itemsFailed", status.get("itemsTotal", 0))
         status.setdefault("failedSteps", ["interrupted"])
         write_json(status_path, status)

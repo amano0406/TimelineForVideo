@@ -45,7 +45,7 @@ FFPROBE_FIXTURE = {
 }
 
 
-def fake_ffprobe(directory: Path) -> str:
+def fake_ffprobe(directory: Path, fixture: dict = FFPROBE_FIXTURE) -> str:
     script = directory / "fake_ffprobe.py"
     script.write_text(
         "\n".join(
@@ -55,7 +55,7 @@ def fake_ffprobe(directory: Path) -> str:
                 "if '-version' in sys.argv:",
                 "    print('ffprobe fake 1.0')",
                 "else:",
-                f"    print(json.dumps({FFPROBE_FIXTURE!r}))",
+                f"    print(json.dumps({fixture!r}))",
             ]
         ),
         encoding="utf-8",
@@ -163,6 +163,32 @@ class ActivityMapTests(unittest.TestCase):
             self.assertGreaterEqual(payload["activity"]["counts"]["visualSentinels"], 3)
             self.assertGreaterEqual(payload["activity"]["counts"]["visualActiveSegments"], 1)
             self.assertGreater(payload["activity"]["inactiveSec"], 0)
+
+    def test_activity_map_warns_but_passes_when_duration_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "input" / "clip.mkv"
+            source.parent.mkdir()
+            source.write_bytes(b"video")
+            unknown_duration = {
+                "streams": FFPROBE_FIXTURE["streams"],
+                "format": {"format_name": "matroska,webm", "size": "5000000000"},
+            }
+
+            result = analyze_activity_files(
+                [video_file_from_path(source, str(source.parent))],
+                str(root / "output"),
+                ffprobe_bin=fake_ffprobe(root, unknown_duration),
+                ffmpeg_bin=fake_ffmpeg_gray(root),
+                max_items=1,
+            )
+
+            self.assertTrue(result["ok"])
+            record = result["records"][0]
+            self.assertTrue(record["ok"])
+            self.assertIn("duration_missing", record["warnings"])
+            self.assertEqual(record["activity"]["counts"]["activeSegments"], 0)
+            self.assertIn("duration was not available", record["activity"]["notes"][0])
 
 
 if __name__ == "__main__":

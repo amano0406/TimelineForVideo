@@ -64,6 +64,29 @@ class FrameOcrTests(unittest.TestCase):
         self.assertTrue(status["ok"])
         self.assertEqual(status["mode"], "off")
 
+    def test_analyze_frame_ocr_outputs_reports_item_progress(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_root = Path(temp_dir) / "output"
+            events: list[dict[str, object]] = []
+            for item_id in ("video-first", "video-second"):
+                raw_outputs_dir = output_root / "items" / item_id / "raw_outputs"
+                raw_outputs_dir.mkdir(parents=True)
+                (raw_outputs_dir / "frame_samples.json").write_text(
+                    json.dumps({"frames": []}),
+                    encoding="utf-8",
+                )
+
+            analyze_frame_ocr_outputs(
+                str(output_root),
+                mode="off",
+                progress_callback=events.append,
+            )
+
+            self.assertGreaterEqual(len(events), 4)
+            self.assertEqual(events[0]["itemsDone"], 0)
+            self.assertEqual(events[-1]["itemsDone"], 2)
+            self.assertEqual(events[-1]["total"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -19,13 +19,14 @@ ITEM_REFRESH_RESULT_SCHEMA_VERSION = "timeline_for_video.item_refresh_result.v1"
 ITEM_LIST_RESULT_SCHEMA_VERSION = "timeline_for_video.item_list_result.v1"
 ITEM_DOWNLOAD_RESULT_SCHEMA_VERSION = "timeline_for_video.item_download_result.v1"
 ITEM_REMOVE_RESULT_SCHEMA_VERSION = "timeline_for_video.item_remove_result.v1"
-PIPELINE_VERSION = "timeline_for_video.pipeline.m10"
+PIPELINE_VERSION = "timeline_for_video.pipeline.m11"
 
 
 def refresh_items(
     video_files: list[VideoFile],
     output_root_text: str,
     ffprobe_bin: str = "ffprobe",
+    ffmpeg_bin: str = "ffmpeg",
     max_items: int | None = None,
 ) -> dict[str, Any]:
     if max_items is not None and max_items < 1:
@@ -33,7 +34,13 @@ def refresh_items(
 
     generated_at = utc_now_iso()
     output_root = resolve_configured_path(output_root_text)
-    probe_result = probe_video_files(video_files, ffprobe_bin=ffprobe_bin, max_items=max_items)
+    probe_result = probe_video_files(
+        video_files,
+        ffprobe_bin=ffprobe_bin,
+        ffmpeg_bin=ffmpeg_bin,
+        output_root_text=output_root_text,
+        max_items=max_items,
+    )
     records: list[dict[str, Any]] = []
 
     for probe_record in probe_result["records"]:
@@ -184,6 +191,7 @@ def build_video_record(
             "source_path": probe_record["sourceIdentity"]["sourcePath"],
             "source_fingerprint": probe_record["sourceFingerprint"]["value"],
             "source_identity": probe_record["sourceIdentity"],
+            "analysis_input": probe_record.get("analysisInput"),
             "source_video_modified": False,
         },
         "timeline": {
@@ -207,6 +215,8 @@ def build_video_record(
             "pipeline_version": PIPELINE_VERSION,
             "generated_at": generated_at,
             "source_video_modified": False,
+            "analysis_input": probe_record.get("analysisInput"),
+            "media_normalization": probe_record.get("mediaNormalization"),
             "raw_outputs": {
                 "ffprobe_json": paths["ffprobeJson"],
                 "frame_samples_json": paths["frameSamplesJson"],
@@ -369,6 +379,8 @@ def build_convert_info(
         "generatedAt": generated_at,
         "sourceFingerprint": probe_record["sourceFingerprint"],
         "sourceFileIdentity": probe_record["sourceIdentity"],
+        "analysisInput": probe_record.get("analysisInput"),
+        "mediaNormalization": probe_record.get("mediaNormalization"),
         "ffprobeVersion": probe_record["ffprobe"]["version"],
         "ffmpegVersion": frame_samples.get("ffmpeg", {}).get("version") if frame_samples else None,
         "pipelineVersion": PIPELINE_VERSION,

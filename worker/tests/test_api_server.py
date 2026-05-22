@@ -6,11 +6,13 @@ from pathlib import Path
 import stat
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from unittest.mock import patch
 
 from timeline_for_video_worker.api_server import handle_request
+from timeline_for_video_worker.processor import refresh_configured_items_unlocked
 
 
 FFPROBE_FIXTURE = {
@@ -284,6 +286,122 @@ class VideoApiServerTests(unittest.TestCase):
                 self.assertEqual(latest["progress"]["percent"], 100.0)
                 self.assertEqual(latest["progress"]["total"], 1)
                 self.assertEqual(latest["result"]["counts"]["processedItems"], 1)
+
+    def test_api_server_marks_orphan_running_job_interrupted(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            settings_path, example_path = write_example_settings(root)
+            state_root = root / "state"
+            run_dir = state_root / "runs" / "run-orphan"
+            run_dir.mkdir(parents=True)
+            (run_dir / "status.json").write_text(
+                json.dumps(
+                    {
+                        "schemaVersion": "timeline_for_video.run_result.v1",
+                        "runId": "run-orphan",
+                        "state": "running",
+                        "currentStage": "audio",
+                        "startedAt": "2026-05-20T00:00:00+00:00",
+                        "updatedAt": "2026-05-20T00:00:10+00:00",
+                        "itemsTotal": 2,
+                        "itemsDone": 1,
+                        "currentItem": "C:\\Video\\large.mkv",
+                        "message": "Analyzing video audio.",
+                        "progressPercent": 55.0,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            env = {
+                "TIMELINE_FOR_VIDEO_SETTINGS_PATH": str(settings_path),
+                "TIMELINE_FOR_VIDEO_SETTINGS_EXAMPLE_PATH": str(example_path),
+                "TIMELINE_FOR_VIDEO_INTERNAL_STATE_ROOT": str(state_root),
+            }
+
+            with patch.dict(os.environ, env, clear=False):
+                status, payload = handle_request("GET", "/jobs/run-orphan", None)
+
+            self.assertEqual(int(status), 200)
+            self.assertEqual(payload["state"], "interrupted")
+            self.assertEqual(payload["progress"]["currentItem"], "C:\\Video\\large.mkv")
+            self.assertIn("Worker stopped before the job completed", payload["message"])
+            self.assertIn("Worker stopped before the job completed", payload["error"])
+
+    def test_refresh_job_does_not_mark_current_queued_run_interrupted(self) -> None:
+        class EmptyDiscovery:
+            files: list[object] = []
+
+            def to_dict(self) -> dict[str, object]:
+                return {"files": [], "counts": {"files": 0}}
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            settings_path, example_path = write_example_settings(root, input_roots=[], output_root=str(root / "output"))
+            state_root = root / "state"
+            run_id = "run-current"
+            run_dir = state_root / "runs" / run_id
+            run_dir.mkdir(parents=True)
+            (run_dir / "status.json").write_text(
+                json.dumps(
+                    {
+                        "schemaVersion": "timeline_for_video.run_result.v1",
+                        "runId": run_id,
+                        "state": "queued",
+                        "currentStage": "queued",
+                        "startedAt": "2026-05-20T00:00:00+00:00",
+                        "updatedAt": "2026-05-20T00:00:01+00:00",
+                        "itemsTotal": 0,
+                        "itemsDone": 0,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            entered_discovery = threading.Event()
+            release_discovery = threading.Event()
+            errors: list[BaseException] = []
+
+            def slow_discover(_settings: dict[str, object]) -> EmptyDiscovery:
+                entered_discovery.set()
+                release_discovery.wait(timeout=5)
+                return EmptyDiscovery()
+
+            def run_refresh() -> None:
+                try:
+                    refresh_configured_items_unlocked(
+                        {"inputRoots": [], "outputRoot": str(root / "output")},
+                        ffprobe_bin="ffprobe",
+                        ffmpeg_bin="ffmpeg",
+                        max_items=None,
+                        samples_per_video=1,
+                        ocr_mode="off",
+                        audio_model_mode="off",
+                        reprocess_duplicates=False,
+                        run_id=run_id,
+                    )
+                except BaseException as exc:
+                    errors.append(exc)
+
+            env = {
+                "TIMELINE_FOR_VIDEO_SETTINGS_PATH": str(settings_path),
+                "TIMELINE_FOR_VIDEO_SETTINGS_EXAMPLE_PATH": str(example_path),
+                "TIMELINE_FOR_VIDEO_INTERNAL_STATE_ROOT": str(state_root),
+            }
+
+            with patch.dict(os.environ, env, clear=False):
+                with patch("timeline_for_video_worker.processor.discover_video_files", side_effect=slow_discover):
+                    thread = threading.Thread(target=run_refresh)
+                    thread.start()
+                    self.assertTrue(entered_discovery.wait(timeout=5))
+
+                    status = json.loads((run_dir / "status.json").read_text(encoding="utf-8"))
+                    self.assertEqual(status["state"], "queued")
+
+                    release_discovery.set()
+                    thread.join(timeout=5)
+
+            self.assertFalse(errors)
+            final_status = json.loads((run_dir / "status.json").read_text(encoding="utf-8"))
+            self.assertEqual(final_status["state"], "completed")
 
 
 if __name__ == "__main__":

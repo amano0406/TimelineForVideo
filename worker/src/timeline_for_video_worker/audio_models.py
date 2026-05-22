@@ -2,9 +2,14 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from functools import lru_cache
+import gc
 import importlib.util
+import json
 import os
 from pathlib import Path
+import subprocess
+import sys
+import tempfile
 from typing import Any
 
 from .probe import utc_now_iso
@@ -22,6 +27,7 @@ DIARIZATION_ACTIVITY_PADDING_SEC = 1.0
 DIARIZATION_ACTIVITY_MERGE_GAP_SEC = 2.0
 TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD = "TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD"
 WORKER_FLAVOR_ENV = "TIMELINE_FOR_VIDEO_WORKER_FLAVOR"
+AUDIO_MODEL_IN_PROCESS_ENV = "TIMELINE_FOR_VIDEO_AUDIO_MODELS_IN_PROCESS"
 NONFATAL_DIARIZATION_STATUSES = {"ok", "no_speaker_turns"}
 NONFATAL_TRANSCRIPTION_STATUSES = {"ok", "no_segments"}
 MIN_TRANSCRIPT_SPEECH_OVERLAP_SEC = 0.1
@@ -155,32 +161,118 @@ def run_audio_reference_models(
     settings: dict[str, Any],
     mode: str | None = None,
 ) -> dict[str, Any]:
+    return _run_audio_reference_models_direct(
+        audio_path=audio_path,
+        speech_candidates=speech_candidates,
+        source_name=source_name,
+        settings=settings,
+        mode=mode,
+    )
+
+
+def run_audio_reference_models_isolated(
+    *,
+    audio_path: Path,
+    speech_candidates: list[dict[str, float]],
+    source_name: str,
+    settings: dict[str, Any],
+    mode: str | None = None,
+) -> dict[str, Any]:
+    model_mode = normalize_audio_model_mode(mode)
+    if model_mode == "off" or os.getenv(AUDIO_MODEL_IN_PROCESS_ENV) == "1":
+        return _run_audio_reference_models_direct(
+            audio_path=audio_path,
+            speech_candidates=speech_candidates,
+            source_name=source_name,
+            settings=settings,
+            mode=model_mode,
+        )
+
+    with tempfile.TemporaryDirectory(prefix="timeline-video-audio-model-") as temp_dir:
+        temp_root = Path(temp_dir)
+        request_path = temp_root / "request.json"
+        result_path = temp_root / "result.json"
+        stdout_path = temp_root / "stdout.log"
+        stderr_path = temp_root / "stderr.log"
+        request_path.write_text(
+            json.dumps(
+                {
+                    "audioPath": str(audio_path),
+                    "speechCandidates": speech_candidates,
+                    "sourceName": source_name,
+                    "settings": settings,
+                    "mode": model_mode,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        with stdout_path.open("wb") as stdout, stderr_path.open("wb") as stderr:
+            env = os.environ.copy()
+            source_root = str(Path(__file__).resolve().parents[1])
+            current_pythonpath = env.get("PYTHONPATH", "")
+            env["PYTHONPATH"] = source_root if not current_pythonpath else source_root + os.pathsep + current_pythonpath
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "timeline_for_video_worker.audio_model_runner",
+                    str(request_path),
+                    str(result_path),
+                ],
+                check=False,
+                stdout=stdout,
+                stderr=stderr,
+                env=env,
+            )
+
+        if result_path.exists():
+            try:
+                result = json.loads(result_path.read_text(encoding="utf-8"))
+                if isinstance(result, dict):
+                    if completed.returncode != 0:
+                        result["ok"] = False
+                        result.setdefault("warnings", []).append(f"audio_model_subprocess_exit:{completed.returncode}")
+                        append_subprocess_log_warning(result, stderr_path)
+                    return result
+            except json.JSONDecodeError:
+                pass
+
+        error = f"audio_model_subprocess_failed_exit:{completed.returncode}"
+        result = failed_audio_model_process_result(
+            audio_path=audio_path,
+            speech_candidates=speech_candidates,
+            source_name=source_name,
+            settings=settings,
+            mode=model_mode,
+            error=error,
+        )
+        append_subprocess_log_warning(result, stderr_path)
+        return result
+
+
+def _run_audio_reference_models_direct(
+    *,
+    audio_path: Path,
+    speech_candidates: list[dict[str, float]],
+    source_name: str,
+    settings: dict[str, Any],
+    mode: str | None = None,
+) -> dict[str, Any]:
     model_mode = normalize_audio_model_mode(mode)
     compute_mode = normalize_compute_mode(settings.get("computeMode"))
     generated_at = utc_now_iso()
     runtime = audio_model_runtime_status(settings)
 
-    result = {
-        "schemaVersion": AUDIO_MODEL_RESULT_SCHEMA_VERSION,
-        "generatedAt": generated_at,
-        "ok": True,
-        "mode": model_mode,
-        "computeMode": compute_mode,
-        "runtime": runtime,
-        "diarization": empty_diarization("not_run"),
-        "transcription": empty_transcription("not_run"),
-        "text": {
-            "mode": "whisper_transcript",
-            "readableText": "",
-            "segments": [],
-            "rejectedSegments": [],
-            "rawSegmentCount": 0,
-            "validatedSegmentCount": 0,
-            "rejectedSegmentCount": 0,
-            "warnings": [],
-        },
-        "warnings": [],
-    }
+    result = base_audio_model_result(
+        model_mode=model_mode,
+        compute_mode=compute_mode,
+        runtime=runtime,
+        generated_at=generated_at,
+    )
 
     if model_mode == "off":
         result["diarization"] = empty_diarization("disabled")
@@ -221,11 +313,13 @@ def run_audio_reference_models(
     try:
         diarization = run_diarization(audio_path, token, compute_mode, source_name, speech_candidates)
         result["diarization"] = diarization
+        release_cached_audio_models()
     except Exception as exc:
         result["ok"] = False
         result["diarization"] = failed_diarization(str(exc))
         result["transcription"] = empty_transcription("not_run")
         result["warnings"].append(f"diarization_failed:{exc}")
+        release_cached_audio_models()
         return result
 
     try:
@@ -242,10 +336,12 @@ def run_audio_reference_models(
         result["text"]["validatedSegmentCount"] = transcription.get("segment_count", 0)
         result["text"]["rejectedSegmentCount"] = transcription.get("rejected_segment_count", 0)
         result["text"]["readableText"] = readable_text_from_segments(result["text"]["segments"])
+        release_cached_audio_models()
     except Exception as exc:
         result["ok"] = False
         result["transcription"] = failed_transcription(str(exc))
         result["warnings"].append(f"transcription_failed:{exc}")
+        release_cached_audio_models()
         return result
 
     if (
@@ -254,6 +350,74 @@ def run_audio_reference_models(
     ):
         result["ok"] = model_mode != "required"
     return result
+
+
+def base_audio_model_result(
+    *,
+    model_mode: str,
+    compute_mode: str,
+    runtime: dict[str, Any],
+    generated_at: str,
+) -> dict[str, Any]:
+    return {
+        "schemaVersion": AUDIO_MODEL_RESULT_SCHEMA_VERSION,
+        "generatedAt": generated_at,
+        "ok": True,
+        "mode": model_mode,
+        "computeMode": compute_mode,
+        "runtime": runtime,
+        "diarization": empty_diarization("not_run"),
+        "transcription": empty_transcription("not_run"),
+        "text": {
+            "mode": "whisper_transcript",
+            "readableText": "",
+            "segments": [],
+            "rejectedSegments": [],
+            "rawSegmentCount": 0,
+            "validatedSegmentCount": 0,
+            "rejectedSegmentCount": 0,
+            "warnings": [],
+        },
+        "warnings": [],
+    }
+
+
+def failed_audio_model_process_result(
+    *,
+    audio_path: Path,
+    speech_candidates: list[dict[str, float]],
+    source_name: str,
+    settings: dict[str, Any],
+    mode: str | None,
+    error: str,
+) -> dict[str, Any]:
+    del speech_candidates, source_name
+    model_mode = normalize_audio_model_mode(mode)
+    compute_mode = normalize_compute_mode(settings.get("computeMode"))
+    result = base_audio_model_result(
+        model_mode=model_mode,
+        compute_mode=compute_mode,
+        runtime=audio_model_runtime_status(settings),
+        generated_at=utc_now_iso(),
+    )
+    result["ok"] = False
+    result["diarization"] = failed_diarization(error)
+    result["transcription"] = failed_transcription(error)
+    result["text"]["warnings"].append(error)
+    result["warnings"].append(error)
+    result["warnings"].append(f"audio_model_input:{audio_path}")
+    return result
+
+
+def append_subprocess_log_warning(result: dict[str, Any], stderr_path: Path) -> None:
+    try:
+        stderr = stderr_path.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return
+    if not stderr:
+        return
+    tail = stderr[-2000:]
+    result.setdefault("warnings", []).append(f"audio_model_subprocess_stderr_tail:{tail}")
 
 
 def empty_diarization(status: str) -> dict[str, Any]:
@@ -355,6 +519,9 @@ def run_diarization(
         audio_input = load_diarization_audio_input(audio_path)
         output = pipeline(audio_input)
         turns = diarization_turns(output)
+        del output
+        del audio_input
+        release_audio_model_intermediates()
     else:
         spans = diarization_activity_spans(speech_candidates)
         scope["spans"] = len(spans)
@@ -377,6 +544,9 @@ def run_diarization(
             audio_input = load_diarization_audio_input(audio_path, start_sec=start, end_sec=end)
             output = pipeline(audio_input)
             turns.extend(diarization_turns(output, offset_sec=start))
+            del output
+            del audio_input
+            release_audio_model_intermediates()
     status = "ok" if turns else "no_speaker_turns"
     warnings = [] if turns else ["Speaker diarization completed, but no speaker turns were found."]
     return {
@@ -528,6 +698,25 @@ def transcript_segment_from_whisper(index: int, segment: Any, speaker_turns: lis
         "noSpeechProbability": whisper_no_speech_probability(segment),
         "index": index,
     }
+
+
+def release_audio_model_intermediates() -> None:
+    gc.collect()
+    try:
+        import torch
+
+        if getattr(torch.cuda, "is_available", lambda: False)():
+            torch.cuda.empty_cache()
+    except Exception:
+        pass
+
+
+def release_cached_audio_models() -> None:
+    for loader in (load_diarization_pipeline, load_whisper_model):
+        cache_clear = getattr(loader, "cache_clear", None)
+        if callable(cache_clear):
+            cache_clear()
+    release_audio_model_intermediates()
 
 
 def whisper_segment_confidence(segment: Any) -> float | None:

@@ -8,7 +8,7 @@ from typing import Any
 
 from . import __version__
 from .discovery import VideoFile, resolve_configured_path
-from .probe import command_prefix, probe_video_files, utc_now_iso
+from .probe import analysis_source_path, command_prefix, probe_video_files, utc_now_iso
 from .settings import PRODUCT_NAME
 
 
@@ -36,7 +36,13 @@ def analyze_activity_files(
 
     generated_at = utc_now_iso()
     output_root = resolve_configured_path(output_root_text)
-    probe_result = probe_video_files(video_files, ffprobe_bin=ffprobe_bin, max_items=max_items)
+    probe_result = probe_video_files(
+        video_files,
+        ffprobe_bin=ffprobe_bin,
+        ffmpeg_bin=ffmpeg_bin,
+        output_root_text=output_root_text,
+        max_items=max_items,
+    )
     records = [
         analyze_probe_record_activity(
             probe_record,
@@ -131,6 +137,9 @@ def analyze_probe_record_activity(
         return write_activity_map(record, activity_map_path)
     if not isinstance(duration_sec, (int, float)) or duration_sec <= 0:
         warnings.append("duration_missing")
+        record["activity"]["notes"].append("Activity map was skipped because the video duration was not available.")
+        record["elapsedSec"] = round(time.perf_counter() - started, 3)
+        record["ok"] = True
         return write_activity_map(record, activity_map_path)
 
     audio_analysis, audio_warning = read_optional_json(audio_analysis_path)
@@ -140,7 +149,7 @@ def analyze_probe_record_activity(
     record["audio"] = audio_segments
 
     visual = visual_activity_segments(
-        source_path=probe_record["sourceIdentity"]["resolvedPath"],
+        source_path=analysis_source_path(probe_record),
         duration_sec=float(duration_sec),
         ffmpeg_bin=ffmpeg_bin,
     )

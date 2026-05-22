@@ -48,6 +48,30 @@ FFPROBE_FIXTURE = {
     },
 }
 
+FFPROBE_WITHOUT_DURATION = {
+    "streams": [
+        {
+            "index": 0,
+            "codec_type": "video",
+            "codec_name": "h264",
+            "width": 1920,
+            "height": 1080,
+        },
+        {
+            "index": 1,
+            "codec_type": "audio",
+            "codec_name": "aac",
+            "sample_rate": "48000",
+            "channels": 2,
+        },
+    ],
+    "format": {
+        "format_name": "matroska,webm",
+        "format_long_name": "Matroska / WebM",
+        "size": "12345",
+    },
+}
+
 
 def write_fake_ffprobe(directory: Path) -> str:
     script = directory / "fake_ffprobe.py"
@@ -60,6 +84,44 @@ def write_fake_ffprobe(directory: Path) -> str:
                 "    print('ffprobe fake 1.0')",
                 "else:",
                 f"    print(json.dumps({FFPROBE_FIXTURE!r}))",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    script.chmod(script.stat().st_mode | stat.S_IXUSR)
+    return f"{sys.executable} {script}"
+
+
+def write_duration_recovery_ffprobe(directory: Path) -> str:
+    script = directory / "fake_ffprobe_recovery.py"
+    script.write_text(
+        "\n".join(
+            [
+                "import json",
+                "import sys",
+                "if '-version' in sys.argv:",
+                "    print('ffprobe fake 1.0')",
+                "elif sys.argv[-1].endswith('source.remux.mkv'):",
+                f"    print(json.dumps({FFPROBE_FIXTURE!r}))",
+                "else:",
+                f"    print(json.dumps({FFPROBE_WITHOUT_DURATION!r}))",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    script.chmod(script.stat().st_mode | stat.S_IXUSR)
+    return f"{sys.executable} {script}"
+
+
+def write_fake_ffmpeg_remux(directory: Path) -> str:
+    script = directory / "fake_ffmpeg_remux.py"
+    script.write_text(
+        "\n".join(
+            [
+                "from pathlib import Path",
+                "import sys",
+                "Path(sys.argv[-1]).parent.mkdir(parents=True, exist_ok=True)",
+                "Path(sys.argv[-1]).write_bytes(b'remuxed')",
             ]
         ),
         encoding="utf-8",
@@ -139,6 +201,38 @@ class ProbeTests(unittest.TestCase):
             self.assertEqual(result["counts"]["probedFiles"], 1)
             self.assertEqual(result["counts"]["failedProbes"], 0)
             self.assertEqual(len(result["records"]), 1)
+
+    def test_probe_video_files_remuxes_when_duration_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            output_root = root / "output"
+            source = root / "clip.mkv"
+            source.write_bytes(b"video")
+            source_before = source.read_bytes()
+            fake_ffprobe = write_duration_recovery_ffprobe(root)
+            fake_ffmpeg = write_fake_ffmpeg_remux(root)
+            video_file = video_file_from_path(source, str(root))
+
+            result = probe_video_files(
+                [video_file],
+                ffprobe_bin=fake_ffprobe,
+                ffmpeg_bin=fake_ffmpeg,
+                output_root_text=str(output_root),
+            )
+
+            record = result["records"][0]
+            self.assertEqual(record["ffprobe"]["summary"]["format"]["durationSec"], 12.5)
+            self.assertEqual(record["sourceIdentity"]["resolvedPath"], str(source))
+            self.assertEqual(record["analysisInput"]["kind"], "normalized_media")
+            self.assertTrue(record["mediaNormalization"]["attempted"])
+            self.assertTrue(record["mediaNormalization"]["ok"])
+            self.assertIn("-c", record["mediaNormalization"]["command"])
+            self.assertTrue(Path(record["analysisInput"]["resolvedPath"]).exists())
+            self.assertEqual(source.read_bytes(), source_before)
+            self.assertIn(
+                "duration_missing_resolved_by_media_normalization",
+                record["recordSeed"]["processing"]["warnings"],
+            )
 
 
 if __name__ == "__main__":
