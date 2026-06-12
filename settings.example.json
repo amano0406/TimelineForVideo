@@ -8,6 +8,6 @@
     "C:\\apps\\Timeline\\data\\input\\video"
   ],
   "outputRoot": "C:\\apps\\Timeline\\data\\to_text\\video",
-  "huggingFaceToken": "",
+  "huggingfaceToken": "",
   "computeMode": "gpu"
 }

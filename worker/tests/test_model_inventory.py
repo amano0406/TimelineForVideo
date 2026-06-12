@@ -66,8 +66,9 @@ class ModelInventoryTests(unittest.TestCase):
         self.assertEqual(payload["pipeline"]["name"], "TimelineForVideo")
         self.assertEqual(len(payload["pipeline"]["generation_signature"]), 64)
         self.assertFalse(payload["ok"])
-        self.assertEqual(payload["counts"]["requiredComponents"], 8)
-        self.assertEqual(payload["counts"]["readyRequiredComponents"], 7)
+        self.assertEqual(payload["counts"]["components"], 10)
+        self.assertEqual(payload["counts"]["requiredComponents"], 9)
+        self.assertEqual(payload["counts"]["readyRequiredComponents"], 8)
         self.assertEqual(payload["counts"]["audioModelComponents"], 2)
         self.assertEqual(payload["counts"]["readyAudioModelComponents"], 1)
         rows = {row["role"]: row for row in payload["models"]}
@@ -76,6 +77,8 @@ class ModelInventoryTests(unittest.TestCase):
         self.assertTrue(rows["speaker_diarization"]["requires_access_approval"])
         self.assertEqual(rows["speech_transcription"]["model_id"], "Systran/faster-whisper-large-v3")
         self.assertEqual(rows["speech_transcription"]["backend"], "faster-whisper")
+        self.assertEqual(rows["frame_diff_vlm"]["model_id"], "Qwen/Qwen3.5-4B")
+        self.assertFalse(rows["frame_diff_vlm"]["required"])
         self.assertEqual(rows["speech_candidate_detection"]["model_id"], "ffmpeg-silencedetect-noise-35db")
         self.assertEqual(rows["frame_ocr"]["model_id"], "tesseract:jpn+eng")
         self.assertFalse(payload["sourceVideoSafety"]["sourceVideoModified"])
@@ -84,6 +87,9 @@ class ModelInventoryTests(unittest.TestCase):
         self.assertFalse(payload["sourceVideoSafety"]["externalAnalysisApiUsed"])
         components = {component["id"]: component for component in payload["components"]}
         self.assertTrue(components["frame_visual_features"]["runtime"]["ready"])
+        self.assertTrue(components["frame_transition_gate"]["runtime"]["ready"])
+        self.assertIn("frame_diff_vlm", components)
+        self.assertFalse(components["frame_diff_vlm"]["execution"]["required"])
         self.assertFalse(components["speaker_diarization"]["runtime"]["details"]["componentReady"])
         self.assertTrue(components["speech_transcription"]["runtime"]["details"]["componentReady"])
         self.assertFalse(components["speech_transcription"]["runtime"]["details"]["audioModelsReady"])
@@ -150,9 +156,10 @@ class ModelInventoryTests(unittest.TestCase):
         rows = {row["role"]: row for row in payload["models"]}
         self.assertEqual(rows["speaker_diarization"]["huggingface"], remote)
         self.assertEqual(rows["speech_transcription"]["huggingface"], remote)
+        self.assertEqual(rows["frame_diff_vlm"]["huggingface"], remote)
         self.assertNotIn("huggingface", rows["speech_candidate_detection"])
         self.assertNotIn("huggingface", rows["frame_ocr"])
-        self.assertEqual(fetch.call_count, 2)
+        self.assertEqual(fetch.call_count, 3)
 
 
 if __name__ == "__main__":

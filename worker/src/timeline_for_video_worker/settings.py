@@ -15,6 +15,8 @@ INTERNAL_STATE_ROOT_ENV = "TIMELINE_FOR_VIDEO_INTERNAL_STATE_ROOT"
 HUGGING_FACE_TOKEN_ENV = "TIMELINE_FOR_VIDEO_HUGGING_FACE_TOKEN"
 SUPPORTED_COMPUTE_MODES = ("cpu", "gpu")
 DEFAULT_API_PORT = 19500
+TOKEN_SETTING_KEY = "huggingfaceToken"
+LEGACY_TOKEN_SETTING_KEY = "huggingFaceToken"
 
 DEFAULT_SETTINGS: dict[str, Any] = {
     "schemaVersion": SCHEMA_VERSION,
@@ -24,7 +26,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     },
     "inputRoots": ["C:\\TimelineData\\input-video\\"],
     "outputRoot": "C:\\TimelineData\\video",
-    "huggingFaceToken": "",
+    TOKEN_SETTING_KEY: "",
     "computeMode": "gpu",
 }
 
@@ -114,11 +116,11 @@ def normalize_settings(raw: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(output_root_raw, str) or not output_root_raw.strip():
         raise SettingsError("outputRoot must be a non-empty path string.")
 
-    token_raw = raw.get("huggingFaceToken", "")
+    token_raw = raw.get(TOKEN_SETTING_KEY, raw.get(LEGACY_TOKEN_SETTING_KEY, ""))
     if token_raw is None:
         token_raw = ""
     if not isinstance(token_raw, str):
-        raise SettingsError("huggingFaceToken must be a string when configured.")
+        raise SettingsError(f"{TOKEN_SETTING_KEY} must be a string when configured.")
 
     compute_mode = str(raw.get("computeMode", "gpu") or "gpu").strip().casefold()
     if compute_mode not in SUPPORTED_COMPUTE_MODES:
@@ -134,7 +136,7 @@ def normalize_settings(raw: dict[str, Any]) -> dict[str, Any]:
         {
             "inputRoots": input_roots,
             "outputRoot": output_root_raw.strip(),
-            "huggingFaceToken": token_raw.strip(),
+            TOKEN_SETTING_KEY: token_raw.strip(),
             "computeMode": compute_mode,
         }
     )
@@ -189,7 +191,7 @@ def load_huggingface_token(settings: dict[str, Any] | None = None) -> str | None
     if env_token and env_token.strip():
         return env_token.strip()
     if settings:
-        token = settings.get("huggingFaceToken")
+        token = settings.get(TOKEN_SETTING_KEY, settings.get(LEGACY_TOKEN_SETTING_KEY))
         if isinstance(token, str) and token.strip():
             return token.strip()
     return None
@@ -199,13 +201,14 @@ def redact_settings(settings: dict[str, Any] | None) -> dict[str, Any] | None:
     if settings is None:
         return None
     redacted = dict(settings)
-    token = redacted.get("huggingFaceToken")
-    redacted["huggingFaceToken"] = {
+    legacy_token = redacted.pop(LEGACY_TOKEN_SETTING_KEY, None)
+    token = redacted.get(TOKEN_SETTING_KEY, legacy_token)
+    redacted[TOKEN_SETTING_KEY] = {
         "configured": bool(isinstance(token, str) and token.strip()),
         "source": "settings" if isinstance(token, str) and token.strip() else None,
     }
     if load_huggingface_token(settings) and not (isinstance(token, str) and token.strip()):
-        redacted["huggingFaceToken"] = {
+        redacted[TOKEN_SETTING_KEY] = {
             "configured": True,
             "source": "environment",
         }

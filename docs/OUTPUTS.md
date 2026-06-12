@@ -19,6 +19,7 @@ The examples below are intentionally compact. Arrays such as `frames`,
         ffprobe.json
         frame_samples.json
         frame_ocr.json
+        frame_diff_vlm.json
         audio_analysis.json
         activity_map.json
       artifacts/
@@ -130,17 +131,42 @@ Primary item record for consumers that want one document per source video.
       "available": true,
       "framesWithVisualFeatures": 5,
       "warnings": []
+    },
+    "frame_transition_gate": {
+      "available": true,
+      "targetModel": "Qwen/Qwen3.5-4B",
+      "strategy": "cheap_visual_gate_before_vlm",
+      "transitions": 4,
+      "wouldSendToVlm": 2,
+      "wouldSkip": 2,
+      "failedTransitions": 0,
+      "byDecision": {
+        "skip_same": 2,
+        "needs_vlm": 1,
+        "uncertain": 1
+      }
+    },
+    "frame_diff_vlm": {
+      "available": true,
+      "status": "completed",
+      "mode": "auto",
+      "modelId": "Qwen/Qwen3.5-4B",
+      "candidateTransitions": 2,
+      "analyzedTransitions": 2,
+      "changedTransitions": 1,
+      "failedTransitions": 0
     }
   },
   "processing": {
     "stage": "item_refresh",
-    "pipeline_version": "timeline_for_video.pipeline.m10",
+    "pipeline_version": "timeline_for_video.pipeline.m13",
     "generated_at": "2026-05-13T19:42:06.820807+00:00",
     "source_video_modified": false,
     "raw_outputs": {
       "ffprobe_json": "/mnt/c/.../raw_outputs/ffprobe.json",
       "frame_samples_json": "/mnt/c/.../raw_outputs/frame_samples.json",
       "frame_ocr_json": "/mnt/c/.../raw_outputs/frame_ocr.json",
+      "frame_diff_vlm_json": "/mnt/c/.../raw_outputs/frame_diff_vlm.json",
       "audio_analysis_json": "/mnt/c/.../raw_outputs/audio_analysis.json",
       "activity_map_json": "/mnt/c/.../raw_outputs/activity_map.json"
     },
@@ -239,6 +265,35 @@ Time-lane view for UI rendering, search, and later LLM handoff.
         "artifactPath": "/mnt/c/.../artifacts/frames/frame-000002.jpg",
         "ok": true,
         "visual": {}
+      },
+      {
+        "eventType": "frame_transition_gate",
+        "startSec": 30.1,
+        "endSec": 60.2,
+        "fromFrameId": "frame-000002",
+        "toFrameId": "frame-000003",
+        "ok": true,
+        "decision": "needs_vlm",
+        "wouldSendToVlm": true,
+        "reasons": ["changed_ratio_exceeds_vlm_threshold"],
+        "source": "frame_transition_gate",
+        "targetModel": "Qwen/Qwen3.5-4B"
+      },
+      {
+        "eventType": "frame_diff_vlm",
+        "startSec": 30.1,
+        "endSec": 60.2,
+        "fromFrameId": "frame-000002",
+        "toFrameId": "frame-000003",
+        "ok": true,
+        "status": "completed",
+        "changed": true,
+        "changeLevel": "meaningful",
+        "summary": "入力欄の文字が追加された。",
+        "differences": ["入力欄の文字が増えた"],
+        "confidence": 0.9,
+        "modelId": "Qwen/Qwen3.5-4B",
+        "source": "frame_diff_vlm"
       }
     ],
     "audio": [
@@ -320,7 +375,7 @@ Audit and conversion metadata.
   "sourceFileIdentity": {},
   "ffprobeVersion": {},
   "ffmpegVersion": {},
-  "pipelineVersion": "timeline_for_video.pipeline.m10",
+  "pipelineVersion": "timeline_for_video.pipeline.m13",
   "generationSignature": "sha256:...",
   "samplingParameters": {
     "strategy": "evenly_spaced_bounded",
@@ -341,6 +396,24 @@ Audit and conversion metadata.
       "available": true,
       "framesWithVisualFeatures": 5,
       "warnings": []
+    },
+    "frameTransitionGate": {
+      "available": true,
+      "targetModel": "Qwen/Qwen3.5-4B",
+      "transitions": 4,
+      "wouldSendToVlm": 2,
+      "wouldSkip": 2,
+      "failedTransitions": 0
+    },
+    "frameDiffVlm": {
+      "available": true,
+      "status": "completed",
+      "mode": "auto",
+      "modelId": "Qwen/Qwen3.5-4B",
+      "candidateTransitions": 2,
+      "analyzedTransitions": 2,
+      "changedTransitions": 1,
+      "failedTransitions": 0
     }
   },
   "audioProcessing": {
@@ -367,6 +440,12 @@ Audit and conversion metadata.
     "audioStreams": 1,
     "frames": 5,
     "framesWithVisualFeatures": 5,
+    "frameTransitions": 4,
+    "frameTransitionsForVlm": 2,
+    "frameTransitionsSkipped": 2,
+    "frameDiffVlmCandidates": 2,
+    "frameDiffVlmAnalyzed": 2,
+    "frameDiffVlmChanged": 1,
     "ocrTextBlocks": 12,
     "audioSpeechCandidates": 3,
     "activitySegments": 2,
@@ -463,6 +542,34 @@ Bounded frame extraction result.
     "command": [],
     "error": null
   },
+  "visualGate": {
+    "schemaVersion": "timeline_for_video.frame_transition_gate.v1",
+    "available": true,
+    "strategy": "cheap_visual_gate_before_vlm",
+    "targetModel": "Qwen/Qwen3.5-4B",
+    "counts": {
+      "transitions": 4,
+      "wouldSendToVlm": 2,
+      "wouldSkip": 2,
+      "failedTransitions": 0
+    },
+    "transitions": [
+      {
+        "fromFrameId": "frame-000001",
+        "toFrameId": "frame-000002",
+        "fromTimeSec": 0.0,
+        "toTimeSec": 30.1,
+        "decision": "skip_same",
+        "wouldSendToVlm": false,
+        "reasons": ["masked_difference_below_safe_same_thresholds"],
+        "masked": {
+          "meanDiff": 0.00012,
+          "changedRatio": 0.0002,
+          "largestComponentRatio": 0.0001
+        }
+      }
+    ]
+  },
   "counts": {
     "requestedFrames": 5,
     "extractedFrames": 5,
@@ -471,6 +578,76 @@ Bounded frame extraction result.
   "warnings": []
 }
 ```
+
+### `raw_outputs/frame_diff_vlm.json`
+
+Local VLM comments for adjacent frame transitions selected by `visualGate`.
+
+```json
+{
+  "schemaVersion": "timeline_for_video.frame_diff_vlm.v1",
+  "product": "TimelineForVideo",
+  "version": "0.1.0",
+  "itemId": "video-260b3148c51df872",
+  "generatedAt": "2026-05-13T19:41:02.000000+00:00",
+  "ok": true,
+  "status": "completed",
+  "mode": "auto",
+  "model": {
+    "modelId": "Qwen/Qwen3.5-4B",
+    "maxNewTokens": 512,
+    "maxPixels": 230400,
+    "modelDtype": "auto"
+  },
+  "source": {
+    "frameSamplesJson": "/mnt/c/.../raw_outputs/frame_samples.json",
+    "gateSchemaVersion": "timeline_for_video.frame_transition_gate.v1"
+  },
+  "outputs": {
+    "frameDiffVlmJson": "/mnt/c/.../raw_outputs/frame_diff_vlm.json"
+  },
+  "counts": {
+    "candidateTransitions": 2,
+    "analyzedTransitions": 2,
+    "skippedTransitions": 0,
+    "failedTransitions": 0,
+    "changedTransitions": 1,
+    "unchangedTransitions": 1
+  },
+  "transitions": [
+    {
+      "fromFrameId": "frame-000002",
+      "toFrameId": "frame-000003",
+      "startSec": 30.1,
+      "endSec": 60.2,
+      "ok": true,
+      "status": "completed",
+      "changed": true,
+      "changeLevel": "meaningful",
+      "summary": "入力欄の文字が追加された。",
+      "differences": ["入力欄の文字が増えた"],
+      "confidence": 0.9,
+      "gate": {
+        "decision": "needs_vlm",
+        "reasons": ["changed_ratio_exceeds_vlm_threshold"]
+      },
+      "inputFrames": {
+        "leftPath": "/mnt/c/.../artifacts/frames/frame-000002.jpg",
+        "rightPath": "/mnt/c/.../artifacts/frames/frame-000003.jpg"
+      },
+      "rawText": "{\"changed\":true,...}",
+      "parsed": {},
+      "elapsedSec": 21.4,
+      "warnings": []
+    }
+  ],
+  "warnings": []
+}
+```
+
+If dependencies are not installed and mode is `auto`, `status` becomes
+`skipped_dependency_unavailable`, `ok` remains `true`, and transitions are
+recorded as skipped. In `required` mode the same condition makes the step fail.
 
 ### `raw_outputs/frame_ocr.json`
 
@@ -764,21 +941,33 @@ These are API results, not necessarily durable item files.
 
 ```json
 {
-  "schemaVersion": "timeline_for_video.item_refresh_result.v1",
+  "schemaVersion": "timeline_for_video.run_result.v1",
   "product": "TimelineForVideo",
   "version": "0.1.0",
-  "generatedAt": "2026-05-13T19:42:06.820807+00:00",
+  "generatedAt": "2026-06-12T00:00:00+00:00",
+  "runId": "run-20260612-000000",
+  "state": "completed",
   "ok": true,
+  "failedSteps": [],
   "outputRoot": {
     "configuredPath": "C:\\apps\\Timeline\\data\\to_text\\video",
     "resolvedPath": "/mnt/c/apps/Timeline/data/to_text/video"
   },
-  "ffprobeVersion": {},
   "counts": {
-    "discoveredFiles": 1,
-    "refreshedItems": 1,
+    "sourceFiles": 1,
+    "candidateItems": 1,
+    "processedItems": 1,
+    "skippedItems": 0,
     "failedItems": 0,
-    "skippedByMaxItems": 0
+    "completedItems": 1
+  },
+  "steps": {
+    "sample": { "ok": true, "counts": { "items": 1, "frames": 5 } },
+    "frameOcr": { "ok": true, "counts": { "items": 1 } },
+    "audio": { "ok": true, "counts": { "items": 1 } },
+    "activity": { "ok": true, "counts": { "items": 1 } },
+    "frameDiffVlm": { "ok": true, "counts": { "items": 1 } },
+    "refresh": { "ok": true, "counts": { "items": 1 } }
   },
   "records": [
     {
@@ -798,6 +987,80 @@ These are API results, not necessarily durable item files.
       "warnings": []
     }
   ]
+}
+```
+
+### `POST /jobs`
+
+Starts an asynchronous refresh job and returns the same envelope used by
+`GET /jobs/{jobId}`.
+
+```json
+{
+  "schemaVersion": "timeline.product_job.v1",
+  "productId": "video",
+  "productName": "TimelineForVideo",
+  "type": "refresh",
+  "jobId": "run-20260612-000000",
+  "state": "queued",
+  "phase": "queued",
+  "stage": "queued",
+  "message": "Video refresh job has been queued.",
+  "progress": {
+    "percent": 0.0,
+    "current": 0,
+    "total": 0,
+    "unit": "files",
+    "currentItem": "",
+    "estimatedRemainingSeconds": null
+  },
+  "startedAt": "2026-06-12T00:00:00+00:00",
+  "updatedAt": "2026-06-12T00:00:00+00:00",
+  "completedAt": "",
+  "error": null,
+  "warnings": [],
+  "result": {
+    "schemaVersion": "timeline_for_video.run_result_summary.v1",
+    "runId": "run-20260612-000000",
+    "state": "queued",
+    "ok": false,
+    "failedSteps": [],
+    "counts": {
+      "sourceFiles": 0,
+      "candidateItems": 0,
+      "processedItems": 0,
+      "skippedItems": 0,
+      "failedItems": 0,
+      "completedItems": 0
+    },
+    "resultPath": "",
+    "resultIncluded": false
+  }
+}
+```
+
+### `GET /jobs`
+
+```json
+{
+  "schemaVersion": "timeline_for_video.runs_list.v1",
+  "product": "TimelineForVideo",
+  "version": "0.1.0",
+  "ok": true,
+  "stateRoot": "/shared/app-data/timeline-for-video-state",
+  "counts": { "runs": 1 },
+  "runs": [
+    {
+      "runId": "run-20260612-000000",
+      "state": "completed",
+      "ok": true,
+      "generatedAt": "2026-06-12T00:00:00+00:00",
+      "counts": { "processedItems": 1, "failedItems": 0 },
+      "resultPath": "/shared/app-data/timeline-for-video-state/runs/run-20260612-000000/result.json",
+      "statusPath": "/shared/app-data/timeline-for-video-state/runs/run-20260612-000000/status.json"
+    }
+  ],
+  "activeJobId": ""
 }
 ```
 

@@ -11,7 +11,9 @@ from unittest.mock import patch
 
 from timeline_for_video_worker.audio_analysis import (
     analyze_audio_files,
+    audio_model_skip_reason,
     ffmpeg_timeout_seconds,
+    MAX_AUDIO_MODEL_SPEECH_CANDIDATES,
     parse_silences,
     run_audio_extract,
     speech_candidates_from_silences,
@@ -133,6 +135,21 @@ class AudioAnalysisTests(unittest.TestCase):
         self.assertEqual(ffmpeg_timeout_seconds(4.0), 180)
         self.assertGreater(ffmpeg_timeout_seconds(61709.3), 780)
 
+    def test_required_audio_models_do_not_skip_for_many_speech_candidates(self) -> None:
+        speech_result = {
+            "ok": True,
+            "speechCandidates": [
+                {"startSec": float(index), "endSec": float(index) + 0.5}
+                for index in range(MAX_AUDIO_MODEL_SPEECH_CANDIDATES + 1)
+            ],
+        }
+
+        self.assertEqual(audio_model_skip_reason(3600.0, speech_result, mode="required"), "")
+        self.assertEqual(
+            audio_model_skip_reason(3600.0, speech_result, mode="auto"),
+            "too_many_speech_candidates",
+        )
+
     def test_audio_extract_timeout_removes_partial_output(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             output_path = Path(temp_dir) / "audio" / "source_audio.mp3"
@@ -169,7 +186,7 @@ class AudioAnalysisTests(unittest.TestCase):
                     ffprobe_bin=fake_ffprobe(root),
                     ffmpeg_bin=fake_ffmpeg(root),
                     max_items=1,
-                    settings={"computeMode": "cpu", "huggingFaceToken": ""},
+                    settings={"computeMode": "cpu", "huggingfaceToken": ""},
                     audio_model_mode="auto",
                 )
 
@@ -195,6 +212,85 @@ class AudioAnalysisTests(unittest.TestCase):
             self.assertEqual(payload["transcription"]["status"], "not_configured")
             self.assertTrue(payload["ok"])
 
+    def test_audio_model_mode_off_skips_normalized_audio_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "input" / "clip.mp4"
+            source.parent.mkdir()
+            source.write_bytes(b"video")
+
+            result = analyze_audio_files(
+                [video_file_from_path(source, str(source.parent))],
+                str(root / "output"),
+                ffprobe_bin=fake_ffprobe(root),
+                ffmpeg_bin=fake_ffmpeg(root),
+                max_items=1,
+                settings={"computeMode": "cpu", "huggingfaceToken": ""},
+                audio_model_mode="off",
+            )
+
+            self.assertTrue(result["ok"])
+            payload = json.loads(Path(result["records"][0]["outputs"]["audioAnalysisJson"]).read_text(encoding="utf-8"))
+            self.assertTrue(payload["audioModelInput"]["skipped"])
+            self.assertTrue(payload["audioModelInput"]["removedAfterProcessing"])
+            self.assertNotIn("normalized_audio.wav", " ".join(payload["speechActivity"]["command"]))
+            self.assertIn("audio.mp3", " ".join(payload["speechActivity"]["command"]))
+            self.assertEqual(payload["audioModels"]["mode"], "off")
+            self.assertEqual(payload["transcription"]["status"], "disabled")
+
+    def test_audio_model_mode_off_skips_very_long_audio_analysis(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "input" / "long.mp4"
+            source.parent.mkdir()
+            source.write_bytes(b"video")
+            long_fixture = {
+                "streams": [
+                    {
+                        "index": 0,
+                        "codec_type": "video",
+                        "codec_name": "h264",
+                        "width": 320,
+                        "height": 180,
+                        "duration": "14400.000000",
+                    },
+                    {
+                        "index": 1,
+                        "codec_type": "audio",
+                        "codec_name": "aac",
+                        "sample_rate": "48000",
+                        "channels": 1,
+                        "duration": "14400.000000",
+                    },
+                ],
+                "format": {
+                    "format_name": "mov,mp4",
+                    "duration": "14400.000000",
+                    "size": "5000000000",
+                    "bit_rate": "2777777",
+                },
+            }
+
+            result = analyze_audio_files(
+                [video_file_from_path(source, str(source.parent))],
+                str(root / "output"),
+                ffprobe_bin=fake_ffprobe(root, long_fixture),
+                ffmpeg_bin=fake_ffmpeg(root),
+                max_items=1,
+                settings={"computeMode": "cpu", "huggingfaceToken": ""},
+                audio_model_mode="off",
+            )
+
+            self.assertTrue(result["ok"])
+            payload = json.loads(Path(result["records"][0]["outputs"]["audioAnalysisJson"]).read_text(encoding="utf-8"))
+            self.assertTrue(payload["audioArtifact"]["skipped"])
+            self.assertEqual(payload["audioArtifact"]["skipReason"], "duration_too_long")
+            self.assertTrue(payload["audioModelInput"]["skipped"])
+            self.assertTrue(payload["speechActivity"]["skipped"])
+            self.assertEqual(payload["speechActivity"]["counts"]["speechCandidates"], 0)
+            self.assertIn("audio_analysis_skipped_duration_too_long", payload["warnings"])
+            self.assertEqual(payload["transcription"]["status"], "disabled")
+
     def test_required_audio_models_warn_when_duration_is_unknown(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -212,7 +308,7 @@ class AudioAnalysisTests(unittest.TestCase):
                 ffprobe_bin=fake_ffprobe(root, unknown_duration),
                 ffmpeg_bin=fake_ffmpeg(root),
                 max_items=1,
-                settings={"computeMode": "cpu", "huggingFaceToken": ""},
+                settings={"computeMode": "cpu", "huggingfaceToken": ""},
                 audio_model_mode="required",
             )
 
@@ -237,7 +333,7 @@ class AudioAnalysisTests(unittest.TestCase):
                 ffprobe_bin=fake_ffprobe(root),
                 ffmpeg_bin=fake_ffmpeg(root),
                 max_items=1,
-                settings={"computeMode": "cpu", "huggingFaceToken": ""},
+                settings={"computeMode": "cpu", "huggingfaceToken": ""},
                 audio_model_mode="off",
                 progress_callback=events.append,
             )
@@ -266,7 +362,7 @@ class AudioAnalysisTests(unittest.TestCase):
                     ffprobe_bin=fake_ffprobe(root, FFPROBE_WITHOUT_AUDIO),
                     ffmpeg_bin=fake_ffmpeg(root),
                     max_items=1,
-                    settings={"computeMode": "cpu", "huggingFaceToken": ""},
+                    settings={"computeMode": "cpu", "huggingfaceToken": ""},
                     audio_model_mode="required",
                 )
 

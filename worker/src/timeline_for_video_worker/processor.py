@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
+import time
 from typing import Any
 from uuid import uuid4
 
@@ -9,6 +11,7 @@ from . import __version__
 from .activity_map import analyze_activity_files
 from .audio_analysis import analyze_audio_files
 from .discovery import VideoFile, discover_video_files, resolve_configured_path
+from .frame_diff_vlm import analyze_frame_diff_vlm_outputs, normalize_frame_diff_vlm_options
 from .frame_ocr import analyze_frame_ocr_outputs
 from .items import PIPELINE_VERSION, generated_item_files, refresh_items as refresh_item_records
 from .locks import exclusive_lock
@@ -19,6 +22,7 @@ from .settings import PRODUCT_NAME, internal_state_root
 
 CATALOG_SCHEMA_VERSION = "timeline_for_video.catalog.v1"
 RUN_RESULT_SCHEMA_VERSION = "timeline_for_video.run_result.v1"
+DEFAULT_REFRESH_BATCH_SIZE = 8
 
 
 def refresh_configured_items(
@@ -30,6 +34,8 @@ def refresh_configured_items(
     samples_per_video: int = DEFAULT_SAMPLES_PER_VIDEO,
     ocr_mode: str = "auto",
     audio_model_mode: str | None = None,
+    frame_diff_vlm_mode: str | None = None,
+    frame_diff_vlm_model_id: str | None = None,
     reprocess_duplicates: bool = False,
     run_id: str | None = None,
 ) -> dict[str, Any]:
@@ -43,6 +49,8 @@ def refresh_configured_items(
             samples_per_video=samples_per_video,
             ocr_mode=ocr_mode,
             audio_model_mode=audio_model_mode,
+            frame_diff_vlm_mode=frame_diff_vlm_mode,
+            frame_diff_vlm_model_id=frame_diff_vlm_model_id,
             reprocess_duplicates=reprocess_duplicates,
             run_id=run_id,
         )
@@ -59,6 +67,8 @@ def refresh_configured_items_unlocked(
     audio_model_mode: str | None,
     reprocess_duplicates: bool,
     run_id: str | None,
+    frame_diff_vlm_mode: str | None = None,
+    frame_diff_vlm_model_id: str | None = None,
 ) -> dict[str, Any]:
     if max_items is not None and max_items < 1:
         raise ValueError("max_items must be at least 1")
@@ -140,190 +150,62 @@ def refresh_configured_items_unlocked(
         progress_percent=1.0,
     )
 
-    candidate_files = [row["videoFile"] for row in candidates]
-    candidate_item_ids = {row["itemId"] for row in candidates}
-    write_run_status(
-        run_dir,
-        run_id=run_id,
-        state="running",
-        current_stage="sample",
-        started_at=generated_at,
-        items_total=len(candidates),
-        items_done=0,
-        message="Sampling video frames.",
-        progress_percent=10.0,
-    )
-
-    def sample_progress(event: dict[str, Any]) -> None:
-        total = max(1, int(event.get("total") or len(candidates)))
-        done = max(0, min(total, int(event.get("itemsDone") or 0)))
-        progress_percent = 10.0 + ((done / total) * 15.0)
-        item_stage = str(event.get("itemStage") or "").strip()
-        message = str(event.get("message") or "Sampling video frames.")
-        if item_stage and item_stage not in {"completed"}:
-            message = f"{message} ({item_stage})"
-        write_run_status(
-            run_dir,
+    step_results: dict[str, list[dict[str, Any]]] = {
+        "sample": [],
+        "frameOcr": [],
+        "audio": [],
+        "activity": [],
+        "frameDiffVlm": [],
+        "refresh": [],
+    }
+    processed_records: list[dict[str, Any]] = []
+    complete_ids: set[str] = set()
+    batch_size = configured_refresh_batch_size(len(candidates))
+    batches = list(candidate_batches(candidates, batch_size))
+    completed_before = 0
+    for batch_index, batch_candidates in enumerate(batches, start=1):
+        batch_result = process_candidate_batch(
+            settings=settings,
+            ffprobe_bin=ffprobe_bin,
+            ffmpeg_bin=ffmpeg_bin,
+            samples_per_video=samples_per_video,
+            ocr_mode=ocr_mode,
+            audio_model_mode=audio_model_mode,
+            frame_diff_vlm_mode=frame_diff_vlm_mode,
+            frame_diff_vlm_model_id=frame_diff_vlm_model_id,
+            run_dir=run_dir,
             run_id=run_id,
-            state="running",
-            current_stage="sample",
-            started_at=generated_at,
-            items_total=len(candidates),
-            items_done=done,
-            current_item=str(event.get("currentItem") or "") or None,
-            message=message,
-            progress_percent=progress_percent,
+            generated_at=generated_at,
+            batch_candidates=batch_candidates,
+            batch_index=batch_index,
+            batch_count=len(batches),
+            completed_before=completed_before,
+            total_candidates=len(candidates),
         )
+        for step_name, step_result in batch_result["steps"].items():
+            step_results[step_name].append(step_result)
+        batch_complete_ids = batch_result["completeItemIds"]
+        complete_ids.update(batch_complete_ids)
+        processed_records.extend(batch_result["processedRecords"])
+        for row in batch_candidates:
+            if row["itemId"] in batch_complete_ids:
+                update_catalog_item(catalog, row, output_root)
+        save_catalog(state_root, catalog)
+        completed_before += len(batch_candidates)
 
-    sample_result = sample_video_files(
-        candidate_files,
-        settings["outputRoot"],
-        ffprobe_bin=ffprobe_bin,
-        ffmpeg_bin=ffmpeg_bin,
-        max_items=len(candidate_files),
-        samples_per_video=samples_per_video,
-        progress_callback=sample_progress,
-    )
-    write_run_status(
-        run_dir,
-        run_id=run_id,
-        state="running",
-        current_stage="frame_ocr",
-        started_at=generated_at,
-        items_total=len(candidates),
-        items_done=0,
-        step_status={"sample": sample_result["ok"]},
-        message="Reading text from sampled video frames.",
-        progress_percent=25.0,
-    )
-
-    def frame_ocr_progress(event: dict[str, Any]) -> None:
-        total = max(1, int(event.get("total") or len(candidates)))
-        done = max(0, min(total, int(event.get("itemsDone") or 0)))
-        progress_percent = 25.0 + ((done / total) * 20.0)
-        item_stage = str(event.get("itemStage") or "").strip()
-        message = str(event.get("message") or "Reading text from sampled video frames.")
-        if item_stage and item_stage not in {"completed"}:
-            message = f"{message} ({item_stage})"
-        write_run_status(
-            run_dir,
-            run_id=run_id,
-            state="running",
-            current_stage="frame_ocr",
-            started_at=generated_at,
-            items_total=len(candidates),
-            items_done=done,
-            current_item=str(event.get("currentItem") or "") or None,
-            step_status={"sample": sample_result["ok"]},
-            message=message,
-            progress_percent=progress_percent,
-        )
-
-    frame_ocr_result = analyze_frame_ocr_outputs(
-        settings["outputRoot"],
-        max_items=None,
-        mode=ocr_mode,
-        item_ids=candidate_item_ids,
-        progress_callback=frame_ocr_progress,
-    )
-    write_run_status(
-        run_dir,
-        run_id=run_id,
-        state="running",
-        current_stage="audio",
-        started_at=generated_at,
-        items_total=len(candidates),
-        items_done=0,
-        step_status={"sample": sample_result["ok"], "frameOcr": frame_ocr_result["ok"]},
-        message="Analyzing video audio.",
-        progress_percent=45.0,
-    )
-
-    def audio_progress(event: dict[str, Any]) -> None:
-        total = max(1, int(event.get("total") or len(candidates)))
-        done = max(0, min(total, int(event.get("itemsDone") or 0)))
-        progress_percent = 45.0 + ((done / total) * 25.0)
-        item_stage = str(event.get("itemStage") or "").strip()
-        message = str(event.get("message") or "Analyzing video audio.")
-        if item_stage and item_stage not in {"prepare", "completed"}:
-            message = f"{message} ({item_stage})"
-        write_run_status(
-            run_dir,
-            run_id=run_id,
-            state="running",
-            current_stage="audio",
-            started_at=generated_at,
-            items_total=len(candidates),
-            items_done=done,
-            current_item=str(event.get("currentItem") or "") or None,
-            step_status={"sample": sample_result["ok"], "frameOcr": frame_ocr_result["ok"]},
-            message=message,
-            progress_percent=progress_percent,
-        )
-
-    audio_result = analyze_audio_files(
-        candidate_files,
-        settings["outputRoot"],
-        ffprobe_bin=ffprobe_bin,
-        ffmpeg_bin=ffmpeg_bin,
-        max_items=len(candidate_files),
-        settings=settings,
-        audio_model_mode=audio_model_mode,
-        progress_callback=audio_progress,
-    )
-    write_run_status(
-        run_dir,
-        run_id=run_id,
-        state="running",
-        current_stage="activity",
-        started_at=generated_at,
-        items_total=len(candidates),
-        items_done=0,
-        step_status={
-            "sample": sample_result["ok"],
-            "frameOcr": frame_ocr_result["ok"],
-            "audio": audio_result["ok"],
-        },
-        message="Analyzing video activity.",
-        progress_percent=70.0,
-    )
-    activity_result = analyze_activity_files(
-        candidate_files,
-        settings["outputRoot"],
-        ffprobe_bin=ffprobe_bin,
-        ffmpeg_bin=ffmpeg_bin,
-        max_items=len(candidate_files),
-    )
-    write_run_status(
-        run_dir,
-        run_id=run_id,
-        state="running",
-        current_stage="refresh",
-        started_at=generated_at,
-        items_total=len(candidates),
-        items_done=0,
-        step_status={
-            "sample": sample_result["ok"],
-            "frameOcr": frame_ocr_result["ok"],
-            "audio": audio_result["ok"],
-            "activity": activity_result["ok"],
-        },
-        message="Building Timeline item records.",
-        progress_percent=88.0,
-    )
-    item_result = refresh_item_records(
-        candidate_files,
-        settings["outputRoot"],
-        ffprobe_bin=ffprobe_bin,
-        ffmpeg_bin=ffmpeg_bin,
-        max_items=len(candidate_files),
-    )
+    sample_result = aggregate_step_results("sample", step_results["sample"])
+    frame_ocr_result = aggregate_step_results("frameOcr", step_results["frameOcr"])
+    audio_result = aggregate_step_results("audio", step_results["audio"])
+    activity_result = aggregate_step_results("activity", step_results["activity"])
+    frame_diff_vlm_result = aggregate_step_results("frameDiffVlm", step_results["frameDiffVlm"])
+    item_result = aggregate_step_results("refresh", step_results["refresh"])
 
     ok = (
         sample_result["ok"]
         and frame_ocr_result["ok"]
         and audio_result["ok"]
         and activity_result["ok"]
+        and frame_diff_vlm_result["ok"]
         and item_result["ok"]
     )
     failed_steps = failed_step_names(
@@ -332,15 +214,10 @@ def refresh_configured_items_unlocked(
             "frameOcr": frame_ocr_result,
             "audio": audio_result,
             "activity": activity_result,
+            "frameDiffVlm": frame_diff_vlm_result,
             "refresh": item_result,
         }
     )
-    processed_records = item_result["records"]
-    complete_ids = complete_item_ids([sample_result, frame_ocr_result, audio_result, activity_result, item_result])
-    for row in candidates:
-        if row["itemId"] in complete_ids:
-            update_catalog_item(catalog, row, output_root)
-    save_catalog(state_root, catalog)
 
     failed_items = len(candidates) - len(complete_ids)
     result = {
@@ -390,6 +267,7 @@ def refresh_configured_items_unlocked(
             "frameOcr": frame_ocr_result["ok"],
             "audio": audio_result["ok"],
             "activity": activity_result["ok"],
+            "frameDiffVlm": frame_diff_vlm_result["ok"],
             "refresh": item_result["ok"],
         },
         failed_steps=failed_steps,
@@ -398,6 +276,329 @@ def refresh_configured_items_unlocked(
     )
     write_worker_status(state_root, result)
     return result
+
+
+def configured_refresh_batch_size(total_items: int) -> int:
+    raw_value = os.environ.get("TIMELINE_FOR_VIDEO_REFRESH_BATCH_SIZE", "").strip()
+    if raw_value:
+        try:
+            value = int(raw_value)
+        except ValueError:
+            value = DEFAULT_REFRESH_BATCH_SIZE
+    else:
+        value = DEFAULT_REFRESH_BATCH_SIZE
+    return max(1, min(total_items, value))
+
+
+def candidate_batches(candidates: list[dict[str, Any]], batch_size: int) -> list[list[dict[str, Any]]]:
+    return [candidates[index : index + batch_size] for index in range(0, len(candidates), batch_size)]
+
+
+def process_candidate_batch(
+    *,
+    settings: dict[str, Any],
+    ffprobe_bin: str,
+    ffmpeg_bin: str,
+    samples_per_video: int,
+    ocr_mode: str,
+    audio_model_mode: str | None,
+    frame_diff_vlm_mode: str | None,
+    frame_diff_vlm_model_id: str | None,
+    run_dir: Path,
+    run_id: str,
+    generated_at: str,
+    batch_candidates: list[dict[str, Any]],
+    batch_index: int,
+    batch_count: int,
+    completed_before: int,
+    total_candidates: int,
+) -> dict[str, Any]:
+    candidate_files = [row["videoFile"] for row in batch_candidates]
+    candidate_item_ids = {row["itemId"] for row in batch_candidates}
+
+    def progress_percent(stage_start: float, stage_span: float, done: int, total: int) -> float:
+        stage_fraction = stage_start + ((max(0, min(total, done)) / max(1, total)) * stage_span)
+        overall_fraction = ((batch_index - 1) + stage_fraction) / max(1, batch_count)
+        return 1.0 + (overall_fraction * 98.0)
+
+    def stage_items_done(done: int) -> int:
+        return max(0, min(total_candidates, completed_before + done))
+
+    write_run_status(
+        run_dir,
+        run_id=run_id,
+        state="running",
+        current_stage="sample",
+        started_at=generated_at,
+        items_total=total_candidates,
+        items_done=stage_items_done(0),
+        message=f"Sampling video frames. Batch {batch_index}/{batch_count}.",
+        progress_percent=progress_percent(0.00, 0.20, 0, len(batch_candidates)),
+    )
+
+    def sample_progress(event: dict[str, Any]) -> None:
+        total = max(1, int(event.get("total") or len(batch_candidates)))
+        done = max(0, min(total, int(event.get("itemsDone") or 0)))
+        item_stage = str(event.get("itemStage") or "").strip()
+        message = str(event.get("message") or "Sampling video frames.")
+        if item_stage and item_stage not in {"completed"}:
+            message = f"{message} ({item_stage})"
+        write_run_status(
+            run_dir,
+            run_id=run_id,
+            state="running",
+            current_stage="sample",
+            started_at=generated_at,
+            items_total=total_candidates,
+            items_done=stage_items_done(done),
+            current_item=str(event.get("currentItem") or "") or None,
+            message=f"{message} Batch {batch_index}/{batch_count}.",
+            progress_percent=progress_percent(0.00, 0.20, done, total),
+        )
+
+    sample_result = sample_video_files(
+        candidate_files,
+        settings["outputRoot"],
+        ffprobe_bin=ffprobe_bin,
+        ffmpeg_bin=ffmpeg_bin,
+        max_items=len(candidate_files),
+        samples_per_video=samples_per_video,
+        progress_callback=sample_progress,
+    )
+    write_run_status(
+        run_dir,
+        run_id=run_id,
+        state="running",
+        current_stage="frame_ocr",
+        started_at=generated_at,
+        items_total=total_candidates,
+        items_done=stage_items_done(0),
+        step_status={"sample": sample_result["ok"]},
+        message=f"Reading text from sampled video frames. Batch {batch_index}/{batch_count}.",
+        progress_percent=progress_percent(0.20, 0.25, 0, len(batch_candidates)),
+    )
+
+    def frame_ocr_progress(event: dict[str, Any]) -> None:
+        total = max(1, int(event.get("total") or len(batch_candidates)))
+        done = max(0, min(total, int(event.get("itemsDone") or 0)))
+        item_stage = str(event.get("itemStage") or "").strip()
+        message = str(event.get("message") or "Reading text from sampled video frames.")
+        if item_stage and item_stage not in {"completed"}:
+            message = f"{message} ({item_stage})"
+        write_run_status(
+            run_dir,
+            run_id=run_id,
+            state="running",
+            current_stage="frame_ocr",
+            started_at=generated_at,
+            items_total=total_candidates,
+            items_done=stage_items_done(done),
+            current_item=str(event.get("currentItem") or "") or None,
+            step_status={"sample": sample_result["ok"]},
+            message=f"{message} Batch {batch_index}/{batch_count}.",
+            progress_percent=progress_percent(0.20, 0.25, done, total),
+        )
+
+    frame_ocr_result = analyze_frame_ocr_outputs(
+        settings["outputRoot"],
+        max_items=None,
+        mode=ocr_mode,
+        item_ids=candidate_item_ids,
+        progress_callback=frame_ocr_progress,
+    )
+    write_run_status(
+        run_dir,
+        run_id=run_id,
+        state="running",
+        current_stage="audio",
+        started_at=generated_at,
+        items_total=total_candidates,
+        items_done=stage_items_done(0),
+        step_status={"sample": sample_result["ok"], "frameOcr": frame_ocr_result["ok"]},
+        message=f"Analyzing video audio. Batch {batch_index}/{batch_count}.",
+        progress_percent=progress_percent(0.45, 0.30, 0, len(batch_candidates)),
+    )
+
+    def audio_progress(event: dict[str, Any]) -> None:
+        total = max(1, int(event.get("total") or len(batch_candidates)))
+        done = max(0, min(total, int(event.get("itemsDone") or 0)))
+        item_stage = str(event.get("itemStage") or "").strip()
+        message = str(event.get("message") or "Analyzing video audio.")
+        if item_stage and item_stage not in {"prepare", "completed"}:
+            message = f"{message} ({item_stage})"
+        write_run_status(
+            run_dir,
+            run_id=run_id,
+            state="running",
+            current_stage="audio",
+            started_at=generated_at,
+            items_total=total_candidates,
+            items_done=stage_items_done(done),
+            current_item=str(event.get("currentItem") or "") or None,
+            step_status={"sample": sample_result["ok"], "frameOcr": frame_ocr_result["ok"]},
+            message=f"{message} Batch {batch_index}/{batch_count}.",
+            progress_percent=progress_percent(0.45, 0.30, done, total),
+        )
+
+    audio_result = analyze_audio_files(
+        candidate_files,
+        settings["outputRoot"],
+        ffprobe_bin=ffprobe_bin,
+        ffmpeg_bin=ffmpeg_bin,
+        max_items=len(candidate_files),
+        settings=settings,
+        audio_model_mode=audio_model_mode,
+        progress_callback=audio_progress,
+    )
+    write_run_status(
+        run_dir,
+        run_id=run_id,
+        state="running",
+        current_stage="activity",
+        started_at=generated_at,
+        items_total=total_candidates,
+        items_done=stage_items_done(0),
+        step_status={
+            "sample": sample_result["ok"],
+            "frameOcr": frame_ocr_result["ok"],
+            "audio": audio_result["ok"],
+        },
+        message=f"Analyzing video activity. Batch {batch_index}/{batch_count}.",
+        progress_percent=progress_percent(0.75, 0.15, 0, len(batch_candidates)),
+    )
+    activity_result = analyze_activity_files(
+        candidate_files,
+        settings["outputRoot"],
+        ffprobe_bin=ffprobe_bin,
+        ffmpeg_bin=ffmpeg_bin,
+        max_items=len(candidate_files),
+    )
+    write_run_status(
+        run_dir,
+        run_id=run_id,
+        state="running",
+        current_stage="frame_diff_vlm",
+        started_at=generated_at,
+        items_total=total_candidates,
+        items_done=stage_items_done(0),
+        step_status={
+            "sample": sample_result["ok"],
+            "frameOcr": frame_ocr_result["ok"],
+            "audio": audio_result["ok"],
+            "activity": activity_result["ok"],
+        },
+        message=f"Analyzing visual frame differences. Batch {batch_index}/{batch_count}.",
+        progress_percent=progress_percent(0.90, 0.06, 0, len(batch_candidates)),
+    )
+
+    def frame_diff_vlm_progress(event: dict[str, Any]) -> None:
+        total = max(1, int(event.get("total") or len(batch_candidates)))
+        done = max(0, min(total, int(event.get("itemsDone") or 0)))
+        item_stage = str(event.get("itemStage") or "").strip()
+        message = str(event.get("message") or "Analyzing visual frame differences.")
+        if item_stage and item_stage not in {"completed"}:
+            message = f"{message} ({item_stage})"
+        write_run_status(
+            run_dir,
+            run_id=run_id,
+            state="running",
+            current_stage="frame_diff_vlm",
+            started_at=generated_at,
+            items_total=total_candidates,
+            items_done=stage_items_done(done),
+            current_item=str(event.get("currentItem") or "") or None,
+            step_status={
+                "sample": sample_result["ok"],
+                "frameOcr": frame_ocr_result["ok"],
+                "audio": audio_result["ok"],
+                "activity": activity_result["ok"],
+            },
+            message=f"{message} Batch {batch_index}/{batch_count}.",
+            progress_percent=progress_percent(0.90, 0.06, done, total),
+        )
+
+    frame_diff_vlm_result = analyze_frame_diff_vlm_outputs(
+        settings["outputRoot"],
+        max_items=len(candidate_files),
+        item_ids=candidate_item_ids,
+        settings=settings,
+        options=normalize_frame_diff_vlm_options(
+            mode=frame_diff_vlm_mode,
+            model_id=frame_diff_vlm_model_id,
+        ),
+        progress_callback=frame_diff_vlm_progress,
+    )
+    write_run_status(
+        run_dir,
+        run_id=run_id,
+        state="running",
+        current_stage="refresh",
+        started_at=generated_at,
+        items_total=total_candidates,
+        items_done=stage_items_done(0),
+        step_status={
+            "sample": sample_result["ok"],
+            "frameOcr": frame_ocr_result["ok"],
+            "audio": audio_result["ok"],
+            "activity": activity_result["ok"],
+            "frameDiffVlm": frame_diff_vlm_result["ok"],
+        },
+        message=f"Building Timeline item records. Batch {batch_index}/{batch_count}.",
+        progress_percent=progress_percent(0.96, 0.04, 0, len(batch_candidates)),
+    )
+    item_result = refresh_item_records(
+        candidate_files,
+        settings["outputRoot"],
+        ffprobe_bin=ffprobe_bin,
+        ffmpeg_bin=ffmpeg_bin,
+        max_items=len(candidate_files),
+    )
+    complete_ids = complete_item_ids(
+        [sample_result, frame_ocr_result, audio_result, activity_result, frame_diff_vlm_result, item_result]
+    )
+    return {
+        "steps": {
+            "sample": sample_result,
+            "frameOcr": frame_ocr_result,
+            "audio": audio_result,
+            "activity": activity_result,
+            "frameDiffVlm": frame_diff_vlm_result,
+            "refresh": item_result,
+        },
+        "processedRecords": item_result["records"],
+        "completeItemIds": complete_ids,
+    }
+
+
+def aggregate_step_results(step_name: str, results: list[dict[str, Any]]) -> dict[str, Any]:
+    if not results:
+        return {"ok": True, "records": [], "counts": {}}
+    merged = dict(results[-1])
+    merged["ok"] = all(bool(result.get("ok")) for result in results)
+    merged["records"] = [
+        record
+        for result in results
+        for record in result.get("records", [])
+        if isinstance(record, dict)
+    ]
+    merged["counts"] = aggregate_counts([result.get("counts", {}) for result in results])
+    merged["step"] = step_name
+    return merged
+
+
+def aggregate_counts(counts_list: list[Any]) -> dict[str, Any]:
+    totals: dict[str, Any] = {}
+    for counts in counts_list:
+        if not isinstance(counts, dict):
+            continue
+        for key, value in counts.items():
+            if isinstance(value, bool):
+                totals[key] = value
+            elif isinstance(value, (int, float)):
+                totals[key] = totals.get(key, 0) + value
+            elif key not in totals:
+                totals[key] = value
+    return totals
 
 
 def source_row(video_file: VideoFile, output_root: Path) -> dict[str, Any]:
@@ -444,6 +645,7 @@ def item_output_complete(item_root: Path) -> bool:
         item_root / "raw_outputs" / "ffprobe.json",
         item_root / "raw_outputs" / "frame_samples.json",
         item_root / "raw_outputs" / "frame_ocr.json",
+        item_root / "raw_outputs" / "frame_diff_vlm.json",
         item_root / "raw_outputs" / "audio_analysis.json",
         item_root / "raw_outputs" / "activity_map.json",
         item_root / "artifacts" / "contact_sheet.jpg",
@@ -644,16 +846,25 @@ def write_worker_status(state_root: Path, result: dict[str, Any]) -> None:
 
 
 def read_json(path: Path) -> dict[str, Any] | None:
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError):
-        return None
-    return payload if isinstance(payload, dict) else None
+    for attempt in range(5):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (FileNotFoundError, json.JSONDecodeError):
+            return None
+        except OSError:
+            if attempt < 4:
+                time.sleep(0.02)
+                continue
+            return None
+        return payload if isinstance(payload, dict) else None
+    return None
 
 
 def write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    temp_path = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+    temp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    temp_path.replace(path)
 
 
 def unique_run_id() -> str:

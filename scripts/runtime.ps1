@@ -141,7 +141,7 @@ function Read-TfvSettingsObject {
         schemaVersion = 1
         inputRoots = @("C:\TimelineData\input-video\")
         outputRoot = "C:\TimelineData\video"
-        huggingFaceToken = ""
+        huggingfaceToken = ""
         computeMode = "gpu"
     }
 }
@@ -173,7 +173,10 @@ function ConvertTo-TfvOrderedSettings {
     }
     $ordered.inputRoots = @(Get-TfvJsonProperty -Object $Settings -Name "inputRoots" -Default @())
     $ordered.outputRoot = Get-TfvJsonProperty -Object $Settings -Name "outputRoot" -Default "C:\TimelineData\video"
-    $ordered.huggingFaceToken = Get-TfvJsonProperty -Object $Settings -Name "huggingFaceToken" -Default ""
+    $ordered.huggingfaceToken = Get-TfvJsonProperty `
+        -Object $Settings `
+        -Name "huggingfaceToken" `
+        -Default (Get-TfvJsonProperty -Object $Settings -Name "huggingFaceToken" -Default "")
     $ordered.computeMode = Get-TfvJsonProperty -Object $Settings -Name "computeMode" -Default "gpu"
     return [pscustomobject]$ordered
 }

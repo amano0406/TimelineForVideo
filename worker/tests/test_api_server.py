@@ -137,6 +137,67 @@ def write_example_settings(
 
 
 class VideoApiServerTests(unittest.TestCase):
+    def test_settings_save_writes_canonical_huggingface_token_key(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            settings_path, example_path = write_example_settings(root)
+            env = {
+                "TIMELINE_FOR_VIDEO_SETTINGS_PATH": str(settings_path),
+                "TIMELINE_FOR_VIDEO_SETTINGS_EXAMPLE_PATH": str(example_path),
+                "TIMELINE_FOR_VIDEO_INTERNAL_STATE_ROOT": str(root / "state"),
+            }
+
+            with patch.dict(os.environ, env, clear=False):
+                status, payload = handle_request(
+                    "POST",
+                    "/settings/save",
+                    {
+                        "token": "hf_test_token",
+                    },
+                )
+
+            self.assertEqual(int(status), 200)
+            self.assertEqual(payload["settings"]["huggingfaceToken"], {"configured": True, "source": "settings"})
+            saved = json.loads(settings_path.read_text(encoding="utf-8"))
+            self.assertEqual(saved["huggingfaceToken"], "hf_test_token")
+            self.assertNotIn("huggingFaceToken", saved)
+
+    def test_items_refresh_passes_frame_diff_vlm_options(self) -> None:
+        result = {
+            "schemaVersion": "timeline_for_video.run_result.v1",
+            "product": "TimelineForVideo",
+            "version": "0.1.0",
+            "generatedAt": "2026-06-12T00:00:00+00:00",
+            "runId": "run-test",
+            "state": "completed",
+            "ok": True,
+            "failedSteps": [],
+            "outputRoot": {"configuredPath": "C:\\out", "resolvedPath": "C:\\out"},
+            "counts": {"processedItems": 0},
+            "discovery": {},
+            "steps": {},
+            "records": [],
+        }
+        with patch(
+            "timeline_for_video_worker.api_server.load_settings",
+            return_value={"inputRoots": [], "outputRoot": "C:\\out", "computeMode": "gpu"},
+        ):
+            with patch("timeline_for_video_worker.api_server.refresh_configured_items", return_value=result) as refresh:
+                status, payload = handle_request(
+                    "POST",
+                    "/items/refresh",
+                    {
+                        "maxItems": 1,
+                        "frameDiffVlmMode": "required",
+                        "frameDiffVlmModelId": "Qwen/Qwen3.5-4B",
+                    },
+                )
+
+        self.assertEqual(int(status), 200)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(refresh.call_args.kwargs["frame_diff_vlm_mode"], "required")
+        self.assertEqual(refresh.call_args.kwargs["frame_diff_vlm_model_id"], "Qwen/Qwen3.5-4B")
+
     def test_api_server_dispatches_items_refresh_without_process_spawn(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

@@ -22,6 +22,7 @@ from .audio_models import (
     audio_model_runtime_status,
     normalize_compute_mode,
 )
+from .frame_diff_vlm import DEFAULT_FRAME_DIFF_VLM_MODEL_ID, frame_diff_vlm_runtime_status
 from .frame_ocr import OCR_MODEL_ID, ocr_runtime_status
 from .items import PIPELINE_VERSION
 from .probe import ffprobe_version, utc_now_iso
@@ -66,6 +67,7 @@ def build_model_inventory(
     ffmpeg_status = ffmpeg_version(ffmpeg_bin)
     ocr_status = ocr_runtime_status(ocr_mode)
     visual_status = visual_feature_runtime_status()
+    frame_diff_vlm_status = frame_diff_vlm_runtime_status()
     audio_model_status = audio_model_runtime_status(settings)
     audio_model_required = True
     components = [
@@ -103,6 +105,24 @@ def build_model_inventory(
             backend="Pillow",
             runtime=visual_status,
             reference_product="TimelineForImage",
+        ),
+        local_component(
+            component_id="frame_transition_gate",
+            display_name="frame transition gate",
+            role="Classify adjacent sampled frame transitions before optional Qwen3.5-class VLM processing.",
+            ready=visual_status["ok"],
+            backend="Pillow",
+            model_id="Qwen/Qwen3.5-4B target gate",
+            runtime=visual_status,
+        ),
+        optional_model_component(
+            component_id="frame_diff_vlm",
+            display_name="frame diff VLM",
+            role="Describe meaningful differences between adjacent sampled frames that pass the visual gate.",
+            backend="transformers",
+            model_id=DEFAULT_FRAME_DIFF_VLM_MODEL_ID,
+            ready=frame_diff_vlm_status["ready"],
+            runtime=frame_diff_vlm_status,
         ),
         local_component(
             component_id="audio_derivative",
@@ -201,6 +221,15 @@ def build_generation_signature(*, compute_mode: str) -> str:
         "visual_features": {
             "backend": "Pillow",
         },
+        "frame_transition_gate": {
+            "backend": "Pillow",
+            "target_model": "Qwen/Qwen3.5-4B",
+        },
+        "frame_diff_vlm": {
+            "backend": "transformers",
+            "model_id": DEFAULT_FRAME_DIFF_VLM_MODEL_ID,
+            "mode": "auto",
+        },
         "transcription": {
             "backend": TRANSCRIPTION_BACKEND,
             "model_id": TRANSCRIPTION_MODEL_ID,
@@ -271,6 +300,22 @@ def configured_model_rows() -> list[ModelInventoryRow]:
             notes=[
                 "Runs local OCR over generated frame artifacts.",
                 "This follows the TimelineForImage-compatible frame OCR path.",
+            ],
+        ),
+        ModelInventoryRow(
+            role="frame_diff_vlm",
+            display_name="Frame diff VLM",
+            source="huggingface",
+            model_id=DEFAULT_FRAME_DIFF_VLM_MODEL_ID,
+            backend="transformers",
+            required=False,
+            configured=True,
+            requires_huggingface_token=False,
+            requires_access_approval=False,
+            url=HUGGING_FACE_MODEL_URL.format(model_id=DEFAULT_FRAME_DIFF_VLM_MODEL_ID),
+            notes=[
+                "Runs only for adjacent frame transitions selected by the cheap visual gate.",
+                "No external analysis API is used; inference runs in the local worker when dependencies are installed.",
             ],
         ),
         ModelInventoryRow(
@@ -442,5 +487,36 @@ def audio_model_component(
         "runtime": {
             "ready": bool(ready),
             "details": details,
+        },
+    }
+
+
+def optional_model_component(
+    *,
+    component_id: str,
+    display_name: str,
+    role: str,
+    backend: str,
+    model_id: str,
+    ready: bool,
+    runtime: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "id": component_id,
+        "displayName": display_name,
+        "role": role,
+        "backend": backend,
+        "modelId": model_id,
+        "referenceProduct": None,
+        "execution": {
+            "kind": "vision_model",
+            "required": False,
+            "implementedInVideoWorker": True,
+            "sourceSharing": False,
+            "status": "runs_when_dependencies_are_available",
+        },
+        "runtime": {
+            "ready": bool(ready),
+            "details": runtime,
         },
     }

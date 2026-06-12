@@ -10,8 +10,9 @@ Invoke-RestMethod http://127.0.0.1:19500/items/list -Method Post -Body "{}" -Con
 ```
 
 `start.ps1` starts the Python worker container. That container also serves the
-local HTTP API on the configured host port. It uses existing images by default;
-pass `-Build` when you intentionally want Docker images rebuilt.
+local HTTP API on the configured host port. The launcher runs Docker Compose
+with `--build`, so image changes in the repository are applied before the worker
+starts.
 
 The worker container does not process videos on startup. This prevents Docker
 Desktop or compose restarts from automatically resuming an interrupted video
@@ -46,15 +47,18 @@ GPU is the default worker flavor for TimelineForAudio-compatible audio models.
 When `settings.json` has `"computeMode": "gpu"`, `start.ps1` and the local API add
 `docker-compose.gpu.yml` to the Docker Compose command. The GPU compose layer
 uses `docker/worker.gpu.Dockerfile`, requests all available GPUs, and installs
-GPU audio-model dependencies. The default CPU compose file remains the base
+GPU audio-model dependencies plus the local frame-difference VLM dependencies.
+The default CPU compose file remains the base
 configuration, but CPU mode must be explicitly selected with
 `POST /settings/save` with `computeMode: "cpu"`.
 
 GPU mode is fail-fast. If the running worker is the CPU flavor, CUDA is not
 visible to PyTorch, or ONNX Runtime does not expose `CUDAExecutionProvider`,
-audio model processing fails instead of silently using CPU. Frame OCR and frame
-visual feature extraction follow TimelineForImage and remain CPU-local
-Tesseract/Pillow processing.
+audio model processing fails instead of silently using CPU. Frame OCR, frame
+visual feature extraction, and the cheap visual gate follow TimelineForImage and
+remain CPU-local Tesseract/Pillow processing. The Qwen3.5-class frame-difference
+VLM is local-only and runs in `auto` mode only when the GPU image has
+`transformers`, `torchvision`, and `qwen-vl-utils` available.
 
 ## Local Files
 
@@ -80,10 +84,19 @@ Run status is recorded under the configured output and runtime state paths.
 
 Run metadata is operational state. It is not included in download ZIPs.
 For active runs, `status.json` is updated at the current stage (`sample`,
-`frame_ocr`, `audio`, `refresh`, or `completed`). Completed runs include
+`frame_ocr`, `audio`, `activity`, `frame_diff_vlm`, `refresh`, or `completed`). Completed runs include
 `failedSteps` when a pipeline step did not finish cleanly.
 If the worker is stopped mid-run, the next refresh recovers stale lock files and
 marks old `running` statuses as `interrupted`.
+
+Run state is exposed through the existing job API:
+
+- `POST /jobs`: start an asynchronous refresh job.
+- `GET /jobs`: list recent runs.
+- `GET /jobs/active`: read the active job, when one exists.
+- `GET /jobs/{jobId}`: read one run status/result.
+
+No cancel endpoint is exposed.
 
 ## OCR And Audio Evidence
 
@@ -107,6 +120,22 @@ The token can be stored in local `settings.json` with `POST /settings/save`
 or provided through `TIMELINE_FOR_VIDEO_HUGGING_FACE_TOKEN`,
 `HUGGING_FACE_HUB_TOKEN`, or `HF_TOKEN`. JSON API output redacts the token.
 
+## Frame Difference VLM
+
+`frame_diff_vlm` is an optional local VLM stage. It reads only adjacent-frame
+transitions selected by `visualGate` and writes
+`raw_outputs/frame_diff_vlm.json`. It does not run on transitions confidently
+classified as identical or volatile-only by the cheap gate.
+
+Execution mode is request-scoped:
+
+- `auto`: run when dependencies are installed, otherwise write a structured skip.
+- `required`: fail the step when dependencies, model loading, or JSON parsing fail.
+- `off`: write a disabled result and skip model inference.
+
+The stage uses Hugging Face model files locally through the worker cache. It
+does not call a hosted analysis API.
+
 ## Current Components
 
 `POST /models/list` reports the current execution inventory. Its top-level `models`
@@ -122,6 +151,8 @@ status, and model-card URL.
 | Bounded frame sampling | `ffmpeg` | local, generated artifacts only |
 | Frame OCR | `tesseract:jpn+eng` | local over generated frame artifacts |
 | Frame visual features | Pillow | local over generated frame artifacts |
+| Frame transition gate | Pillow | local adjacent-frame prefilter before VLM |
+| Frame diff VLM | `Qwen/Qwen3.5-4B` via transformers | optional local GPU inference for gated adjacent-frame transitions |
 | Audio derivative | `ffmpeg` MP3 extraction | local generated artifact under `outputRoot` |
 | Audio model input | `ffmpeg` normalized WAV extraction | temporary local processing file, removed after processing |
 | Speech candidate detection | `ffmpeg` silencedetect | local evidence over normalized WAV |

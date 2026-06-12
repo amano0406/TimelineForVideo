@@ -8,6 +8,7 @@ import subprocess
 from typing import Any
 
 from . import __version__
+from .audio_models import normalize_audio_model_mode
 from .audio_models import run_audio_reference_models
 from .audio_models import run_audio_reference_models_isolated
 from .discovery import VideoFile, resolve_configured_path
@@ -269,6 +270,7 @@ def analyze_probe_record_audio(
     }
 
     raw_outputs_dir.mkdir(parents=True, exist_ok=True)
+    configured_audio_model_mode = normalize_audio_model_mode(audio_model_mode)
     if not probe_record["ffprobe"]["ok"]:
         warnings.append("ffprobe_failed")
         record["audioArtifact"]["error"] = "ffprobe failed"
@@ -291,6 +293,47 @@ def analyze_probe_record_audio(
         record["ok"] = model_result["ok"]
         return write_audio_analysis(record, audio_analysis_path)
 
+    if configured_audio_model_mode == "off" and audio_analysis_skip_reason(duration_sec):
+        skip_reason = audio_analysis_skip_reason(duration_sec)
+        warnings.append(f"audio_analysis_skipped_{skip_reason}")
+        record["audioArtifact"].update(
+            {
+                "ok": False,
+                "skipped": True,
+                "skipReason": skip_reason,
+                "timeoutSec": None,
+                "error": f"audio analysis skipped: {skip_reason}",
+            }
+        )
+        record["audioModelInput"].update(
+            {
+                "ok": False,
+                "skipped": True,
+                "skipReason": skip_reason,
+                "timeoutSec": None,
+                "removedAfterProcessing": True,
+                "error": None,
+            }
+        )
+        speech_result = silence_detect_result(True, [], [], None, None)
+        speech_result["skipped"] = True
+        speech_result["skipReason"] = skip_reason
+        record["speechActivity"].update(speech_result)
+        model_result = run_audio_reference_models(
+            audio_path=audio_model_input_path,
+            speech_candidates=[],
+            source_name=probe_record["sourceIdentity"]["sourcePath"],
+            settings=settings,
+            mode="off",
+        )
+        record["audioModels"] = model_result
+        record["diarization"] = model_result["diarization"]
+        record["transcription"] = model_result["transcription"]
+        record["text"] = model_result["text"]
+        warnings.extend(model_result.get("warnings", []))
+        record["ok"] = True
+        return write_audio_analysis(record, audio_analysis_path)
+
     notify_progress(progress_callback, itemStage="extract_audio", message="Extracting review audio.")
     extract_result = run_audio_extract(
         analysis_source_path(probe_record),
@@ -303,24 +346,41 @@ def analyze_probe_record_audio(
     if not extract_result["ok"]:
         warnings.append("audio_extract_failed")
 
-    notify_progress(progress_callback, itemStage="normalize_audio", message="Preparing normalized audio for models.")
-    model_input_result = run_normalized_audio_extract(
-        analysis_source_path(probe_record),
-        audio_model_input_path,
-        ffmpeg_bin=ffmpeg_bin,
-        duration_sec=duration_sec,
-        source_size_bytes=int(probe_record["sourceIdentity"].get("sizeBytes") or 0),
-    )
-    record["audioModelInput"].update(model_input_result)
-    if not model_input_result["ok"]:
-        warnings.append("audio_normalization_failed")
+    model_input_required = configured_audio_model_mode != "off"
+    if model_input_required:
+        notify_progress(progress_callback, itemStage="normalize_audio", message="Preparing normalized audio for models.")
+        model_input_result = run_normalized_audio_extract(
+            analysis_source_path(probe_record),
+            audio_model_input_path,
+            ffmpeg_bin=ffmpeg_bin,
+            duration_sec=duration_sec,
+            source_size_bytes=int(probe_record["sourceIdentity"].get("sizeBytes") or 0),
+        )
+        record["audioModelInput"].update(model_input_result)
+        if not model_input_result["ok"]:
+            warnings.append("audio_normalization_failed")
+    else:
+        model_input_result = {
+            "ok": False,
+            "command": [],
+            "timeoutSec": None,
+            "skipped": True,
+            "error": None,
+            "removedAfterProcessing": True,
+        }
+        record["audioModelInput"].update(model_input_result)
 
     notify_progress(progress_callback, itemStage="detect_speech", message="Detecting speech activity.")
+    speech_input_path = str(audio_model_input_path)
+    speech_input_available = model_input_result["ok"]
+    if not model_input_required:
+        speech_input_path = str(audio_artifact_path) if extract_result["ok"] else analysis_source_path(probe_record)
+        speech_input_available = True
     speech_result = run_silence_detect(
-        str(audio_model_input_path),
+        speech_input_path,
         duration_sec=duration_sec,
         ffmpeg_bin=ffmpeg_bin,
-    ) if model_input_result["ok"] else silence_detect_result(
+    ) if speech_input_available else silence_detect_result(
         False,
         [],
         [],
@@ -332,7 +392,7 @@ def analyze_probe_record_audio(
         warnings.append("speech_activity_detection_failed")
 
     try:
-        skip_model_reason = audio_model_skip_reason(duration_sec, speech_result)
+        skip_model_reason = audio_model_skip_reason(duration_sec, speech_result, mode=audio_model_mode)
         if skip_model_reason:
             warnings.append(f"audio_models_skipped_{skip_model_reason}")
             notify_progress(progress_callback, itemStage="audio_models_skipped", message=f"Skipping audio models: {skip_model_reason}.")
@@ -367,7 +427,7 @@ def analyze_probe_record_audio(
     audio_artifact_required = bool(speech_result.get("speechCandidates"))
     record["ok"] = (
         (extract_result["ok"] or not audio_artifact_required)
-        and model_input_result["ok"]
+        and (model_input_result["ok"] or not model_input_required)
         and speech_result["ok"]
         and model_result["ok"]
     )
@@ -388,7 +448,7 @@ def notify_progress(progress_callback: ProgressCallback | None, **payload: Any) 
         pass
 
 
-def audio_model_skip_reason(duration_sec: float | None, speech_result: dict[str, Any]) -> str:
+def audio_model_skip_reason(duration_sec: float | None, speech_result: dict[str, Any], *, mode: str | None = None) -> str:
     if not isinstance(duration_sec, (int, float)) or duration_sec <= 0:
         return "duration_unknown"
     if speech_result.get("ok") and not speech_result.get("speechCandidates"):
@@ -396,8 +456,18 @@ def audio_model_skip_reason(duration_sec: float | None, speech_result: dict[str,
     if duration_sec > MAX_AUDIO_MODEL_DURATION_SEC:
         return "duration_too_long"
     speech_candidates = speech_result.get("speechCandidates")
-    if isinstance(speech_candidates, list) and len(speech_candidates) > MAX_AUDIO_MODEL_SPEECH_CANDIDATES:
+    if (
+        normalize_audio_model_mode(mode) != "required"
+        and isinstance(speech_candidates, list)
+        and len(speech_candidates) > MAX_AUDIO_MODEL_SPEECH_CANDIDATES
+    ):
         return "too_many_speech_candidates"
+    return ""
+
+
+def audio_analysis_skip_reason(duration_sec: float | None) -> str:
+    if isinstance(duration_sec, (int, float)) and duration_sec > MAX_AUDIO_MODEL_DURATION_SEC:
+        return "duration_too_long"
     return ""
 
 

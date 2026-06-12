@@ -32,7 +32,8 @@ Stop the worker and API:
 .\stop.ps1
 ```
 
-Use `.\start.ps1 -Build` only when Docker images need to be rebuilt.
+`start.ps1` rebuilds the worker image when the Docker context has changed, then
+starts the worker. Use `-Foreground` when you want to follow worker logs.
 
 ## Settings
 
@@ -50,7 +51,7 @@ committed template is `settings.example.json`.
     "C:\\apps\\Timeline\\data\\input\\video"
   ],
   "outputRoot": "C:\\apps\\Timeline\\data\\to_text\\video",
-  "huggingFaceToken": "",
+  "huggingfaceToken": "",
   "computeMode": "gpu"
 }
 ```
@@ -73,6 +74,11 @@ used by Timeline:
 
 ```text
 GET /health
+GET /jobs
+GET /jobs/active
+GET /jobs/{jobId}
+POST /jobs
+POST /settings/init
 POST /settings/status
 POST /settings/save
 POST /files/list
@@ -84,8 +90,11 @@ POST /models/list
 ```
 
 `GET /health` and API routes are served by the resident Python worker
-container. API calls do not call host launchers, do not start Docker
-implicitly, and do not spawn a separate Python process for each request.
+container. API calls do not call host launchers and do not start Docker
+implicitly. Direct actions such as `POST /items/refresh` run in the resident
+worker process. `POST /jobs` is the asynchronous refresh entrypoint and starts a
+tracked refresh subprocess; job state is then read through the `GET /jobs...`
+routes.
 
 ## Output JSON
 
@@ -142,6 +151,7 @@ Milestone 5 item refresh writes item records under `outputRoot`:
         ffprobe.json
         frame_samples.json
         frame_ocr.json
+        frame_diff_vlm.json
         audio_analysis.json
         activity_map.json
       artifacts/
@@ -152,10 +162,14 @@ Milestone 5 item refresh writes item records under `outputRoot`:
 ```
 
 `POST /items/refresh` runs the local evidence pipeline for changed videos: bounded
-frame sampling, frame OCR, frame visual-feature extraction, audio derivative
-analysis, TimelineForAudio-compatible audio models, activity mapping, and item
-record refresh. The same stages are also exposed as smaller diagnostic
-code paths for tests. `activity map` writes `raw_outputs/activity_map.json` with merged
+frame sampling, adjacent-frame visual gating, optional local Qwen3.5-class VLM
+frame-difference comments for gated transitions, frame OCR, frame visual-feature
+extraction, audio derivative analysis, TimelineForAudio-compatible audio models,
+activity mapping, and item record refresh. The same stages are also exposed as
+smaller diagnostic code paths for tests. `frame_diff_vlm` writes
+`raw_outputs/frame_diff_vlm.json`; when VLM dependencies are not installed, the
+stage records a structured skip unless `frameDiffVlmMode: "required"` is used.
+`activity map` writes `raw_outputs/activity_map.json` with merged
 audio activity, five-minute visual sentinel deltas, and inactive intervals that
 can be skipped because no useful source signal was found. Container startup does
 not run the changed-video refresh loop; processing only starts from an explicit
@@ -168,8 +182,11 @@ as before.
 `computeMode: "gpu"` is the default. In that mode, `start.ps1` and the local API
 layer `docker-compose.gpu.yml` on top of the default compose file. The
 pyannote and faster-whisper path must use the GPU worker and CUDA-capable
-runtime; it fails instead of silently falling back to CPU. Frame OCR and frame
-visual features follow TimelineForImage and remain local CPU processing.
+runtime; it fails instead of silently falling back to CPU. Frame OCR, frame
+visual features, and the pre-VLM visual gate remain local CPU processing. The
+Qwen3.5-class frame-difference VLM runs locally in the GPU worker only when the
+GPU image dependencies are installed and the gate selects candidate frame
+transitions.
 
 The default Docker mounts cover the configured video roots on `C:\` and `F:\`
 through `/mnt/c` and `/mnt/f` inside the worker.
@@ -191,6 +208,14 @@ model execution is required by default and fails the item instead of inventing
 speaker turns or transcript text.
 Diagnostic API requests may still override execution mode for isolated
 troubleshooting, but that mode is not stored in settings.
+Frame-difference VLM execution is optional by default:
+
+```powershell
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:19500/items/refresh -Body '{"maxItems":1,"frameDiffVlmMode":"required"}' -ContentType 'application/json'
+```
+
+Use `"off"` to suppress VLM comments, `"auto"` to run when local dependencies are
+available, and `"required"` to fail structurally if the VLM cannot run.
 
 Milestone 6 export and removal API actions are source-safe:
 

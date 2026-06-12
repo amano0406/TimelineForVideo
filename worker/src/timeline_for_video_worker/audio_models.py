@@ -25,6 +25,7 @@ TRANSCRIPTION_MODEL_ID = "Systran/faster-whisper-large-v3"
 TRANSCRIPTION_MODEL_ALIAS = "faster_whisper_large_v3"
 DIARIZATION_ACTIVITY_PADDING_SEC = 1.0
 DIARIZATION_ACTIVITY_MERGE_GAP_SEC = 2.0
+MAX_DIARIZATION_ACTIVITY_SPANS = 48
 TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD = "TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD"
 WORKER_FLAVOR_ENV = "TIMELINE_FOR_VIDEO_WORKER_FLAVOR"
 AUDIO_MODEL_IN_PROCESS_ENV = "TIMELINE_FOR_VIDEO_AUDIO_MODELS_IN_PROCESS"
@@ -526,6 +527,8 @@ def run_diarization(
         spans = diarization_activity_spans(speech_candidates)
         scope["spans"] = len(spans)
         scope["activeSec"] = round(sum(end - start for start, end in spans), 3)
+        scope["speechCandidateCount"] = len(speech_candidates)
+        scope["maxActivitySpans"] = MAX_DIARIZATION_ACTIVITY_SPANS
         if not spans:
             return {
                 "status": "no_speaker_turns",
@@ -539,14 +542,23 @@ def run_diarization(
                 "warnings": ["Speaker diarization skipped because no speech candidates were found."],
                 "error": None,
             }
-        turns = []
-        for start, end in spans:
-            audio_input = load_diarization_audio_input(audio_path, start_sec=start, end_sec=end)
+        if len(spans) > MAX_DIARIZATION_ACTIVITY_SPANS:
+            scope["mode"] = "full_audio_many_speech_candidates"
+            audio_input = load_diarization_audio_input(audio_path)
             output = pipeline(audio_input)
-            turns.extend(diarization_turns(output, offset_sec=start))
+            turns = diarization_turns(output)
             del output
             del audio_input
             release_audio_model_intermediates()
+        else:
+            turns = []
+            for start, end in spans:
+                audio_input = load_diarization_audio_input(audio_path, start_sec=start, end_sec=end)
+                output = pipeline(audio_input)
+                turns.extend(diarization_turns(output, offset_sec=start))
+                del output
+                del audio_input
+                release_audio_model_intermediates()
     status = "ok" if turns else "no_speaker_turns"
     warnings = [] if turns else ["Speaker diarization completed, but no speaker turns were found."]
     return {

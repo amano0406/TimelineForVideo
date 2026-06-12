@@ -19,7 +19,7 @@ ITEM_REFRESH_RESULT_SCHEMA_VERSION = "timeline_for_video.item_refresh_result.v1"
 ITEM_LIST_RESULT_SCHEMA_VERSION = "timeline_for_video.item_list_result.v1"
 ITEM_DOWNLOAD_RESULT_SCHEMA_VERSION = "timeline_for_video.item_download_result.v1"
 ITEM_REMOVE_RESULT_SCHEMA_VERSION = "timeline_for_video.item_remove_result.v1"
-PIPELINE_VERSION = "timeline_for_video.pipeline.m11"
+PIPELINE_VERSION = "timeline_for_video.pipeline.m13"
 
 
 def refresh_items(
@@ -82,6 +82,7 @@ def refresh_probe_record(
     ffprobe_path = raw_outputs_dir / "ffprobe.json"
     frame_samples_path = raw_outputs_dir / "frame_samples.json"
     frame_ocr_path = raw_outputs_dir / "frame_ocr.json"
+    frame_diff_vlm_path = raw_outputs_dir / "frame_diff_vlm.json"
     audio_analysis_path = raw_outputs_dir / "audio_analysis.json"
     activity_map_path = raw_outputs_dir / "activity_map.json"
     contact_sheet_path = artifacts_dir / "contact_sheet.jpg"
@@ -92,6 +93,7 @@ def refresh_probe_record(
 
     frame_samples, frame_samples_warning = read_optional_json(frame_samples_path)
     frame_ocr, frame_ocr_warning = read_optional_json(frame_ocr_path)
+    frame_diff_vlm, frame_diff_vlm_warning = read_optional_json(frame_diff_vlm_path)
     audio_analysis, audio_analysis_warning = read_optional_json(audio_analysis_path)
     activity_map, activity_map_warning = read_optional_json(activity_map_path)
     warnings = list(probe_record.get("recordSeed", {}).get("processing", {}).get("warnings", []))
@@ -99,6 +101,8 @@ def refresh_probe_record(
         warnings.append(frame_samples_warning)
     if frame_ocr_warning:
         warnings.append(frame_ocr_warning)
+    if frame_diff_vlm_warning:
+        warnings.append(frame_diff_vlm_warning)
     if audio_analysis_warning:
         warnings.append(audio_analysis_warning)
     if activity_map_warning:
@@ -113,6 +117,7 @@ def refresh_probe_record(
         "ffprobeJson": str(ffprobe_path),
         "frameSamplesJson": str(frame_samples_path),
         "frameOcrJson": str(frame_ocr_path),
+        "frameDiffVlmJson": str(frame_diff_vlm_path),
         "audioAnalysisJson": str(audio_analysis_path),
         "activityMapJson": str(activity_map_path),
         "artifactsDir": str(artifacts_dir),
@@ -130,17 +135,28 @@ def refresh_probe_record(
         probe_record,
         frame_samples,
         frame_ocr,
+        frame_diff_vlm,
         audio_analysis,
         activity_map,
         paths,
         generated_at,
         warnings,
     )
-    timeline = build_timeline(probe_record, frame_samples, frame_ocr, audio_analysis, activity_map, paths, generated_at)
+    timeline = build_timeline(
+        probe_record,
+        frame_samples,
+        frame_ocr,
+        frame_diff_vlm,
+        audio_analysis,
+        activity_map,
+        paths,
+        generated_at,
+    )
     convert_info = build_convert_info(
         probe_record,
         frame_samples,
         frame_ocr,
+        frame_diff_vlm,
         audio_analysis,
         activity_map,
         paths,
@@ -173,6 +189,7 @@ def build_video_record(
     probe_record: dict[str, Any],
     frame_samples: dict[str, Any] | None,
     frame_ocr: dict[str, Any] | None,
+    frame_diff_vlm: dict[str, Any] | None,
     audio_analysis: dict[str, Any] | None,
     activity_map: dict[str, Any] | None,
     paths: dict[str, str],
@@ -209,6 +226,8 @@ def build_video_record(
         "activity": activity_map_summary(activity_map),
         "visual": {
             "frame_features": frame_visual_summary_from_entries(frames),
+            "frame_transition_gate": frame_transition_gate_summary(frame_samples),
+            "frame_diff_vlm": frame_diff_vlm_summary(frame_diff_vlm),
         },
         "processing": {
             "stage": "item_refresh",
@@ -221,6 +240,7 @@ def build_video_record(
                 "ffprobe_json": paths["ffprobeJson"],
                 "frame_samples_json": paths["frameSamplesJson"],
                 "frame_ocr_json": paths["frameOcrJson"],
+                "frame_diff_vlm_json": paths["frameDiffVlmJson"],
                 "audio_analysis_json": paths["audioAnalysisJson"],
                 "activity_map_json": paths["activityMapJson"],
             },
@@ -260,6 +280,7 @@ def build_timeline(
     probe_record: dict[str, Any],
     frame_samples: dict[str, Any] | None,
     frame_ocr: dict[str, Any] | None,
+    frame_diff_vlm: dict[str, Any] | None,
     audio_analysis: dict[str, Any] | None,
     activity_map: dict[str, Any] | None,
     paths: dict[str, str],
@@ -293,6 +314,8 @@ def build_timeline(
                 "visual": frame["visual"],
             }
         )
+    visual_events.extend(frame_transition_gate_events(frame_samples))
+    visual_events.extend(frame_diff_vlm_events(frame_diff_vlm))
 
     audio_streams = [stream for stream in summary["streams"] if stream["codecType"] == "audio"] if summary else []
     audio_events = [
@@ -352,6 +375,7 @@ def build_convert_info(
     probe_record: dict[str, Any],
     frame_samples: dict[str, Any] | None,
     frame_ocr: dict[str, Any] | None,
+    frame_diff_vlm: dict[str, Any] | None,
     audio_analysis: dict[str, Any] | None,
     activity_map: dict[str, Any] | None,
     paths: dict[str, str],
@@ -370,6 +394,8 @@ def build_convert_info(
     frame_count = len(frame_entries(frame_samples, frame_ocr))
     text_blocks = text_blocks_from_frame_ocr(frame_ocr)
     speech_candidates = audio_analysis_speech_candidate_count(audio_analysis)
+    frame_transition_gate = frame_transition_gate_summary(frame_samples)
+    frame_diff_vlm_info = frame_diff_vlm_summary(frame_diff_vlm)
     return {
         "schemaVersion": CONVERT_INFO_SCHEMA_VERSION,
         "product": {
@@ -389,6 +415,8 @@ def build_convert_info(
         "imageProcessing": {
             "frameOcr": frame_ocr_summary(frame_ocr),
             "frameVisualFeatures": frame_visual_summary(frame_ocr),
+            "frameTransitionGate": frame_transition_gate,
+            "frameDiffVlm": frame_diff_vlm_info,
         },
         "audioProcessing": audio_analysis_summary(audio_analysis),
         "activityProcessing": activity_map_summary(activity_map),
@@ -398,6 +426,12 @@ def build_convert_info(
             "audioStreams": summary["counts"]["audioStreams"] if summary else 0,
             "frames": frame_count,
             "framesWithVisualFeatures": frame_visual_summary(frame_ocr)["framesWithVisualFeatures"],
+            "frameTransitions": frame_transition_gate["transitions"],
+            "frameTransitionsForVlm": frame_transition_gate["wouldSendToVlm"],
+            "frameTransitionsSkipped": frame_transition_gate["wouldSkip"],
+            "frameDiffVlmCandidates": frame_diff_vlm_info["candidateTransitions"],
+            "frameDiffVlmAnalyzed": frame_diff_vlm_info["analyzedTransitions"],
+            "frameDiffVlmChanged": frame_diff_vlm_info["changedTransitions"],
             "ocrTextBlocks": len(text_blocks),
             "audioSpeechCandidates": speech_candidates,
             "activitySegments": activity_map_summary(activity_map)["activeSegments"],
@@ -617,6 +651,7 @@ def item_summary(item_dir: Path, record_path: Path, record: dict[str, Any]) -> d
     review = record.get("review") if isinstance(record.get("review"), dict) else {}
     processing = record.get("processing") if isinstance(record.get("processing"), dict) else {}
     text = record.get("text") if isinstance(record.get("text"), dict) else {}
+    visual = record.get("visual") if isinstance(record.get("visual"), dict) else {}
     audio = record.get("audio") if isinstance(record.get("audio"), dict) else {}
     audio_analysis = audio.get("analysis") if isinstance(audio.get("analysis"), dict) else {}
     warnings = processing.get("warnings") if isinstance(processing.get("warnings"), list) else []
@@ -630,6 +665,7 @@ def item_summary(item_dir: Path, record_path: Path, record: dict[str, Any]) -> d
         "frameCount": len(frames),
         "contactSheet": review.get("contact_sheet"),
         "text": text_list_summary(text),
+        "visual": visual_list_summary(visual),
         "audioAnalysis": audio_list_summary(audio_analysis),
         "activity": activity_map_summary(record.get("activity") if isinstance(record.get("activity"), dict) else None),
         "warnings": warnings,
@@ -655,6 +691,31 @@ def text_list_summary(text: dict[str, Any]) -> dict[str, Any]:
         "transcription": bool(text.get("transcription")),
         "textBlockCount": len(blocks),
         "fullTextLength": len(full_text),
+    }
+
+
+def visual_list_summary(visual: dict[str, Any]) -> dict[str, Any]:
+    gate = visual.get("frame_transition_gate") if isinstance(visual.get("frame_transition_gate"), dict) else {}
+    vlm = visual.get("frame_diff_vlm") if isinstance(visual.get("frame_diff_vlm"), dict) else {}
+    return {
+        "frameTransitionGate": {
+            "available": bool(gate.get("available")),
+            "targetModel": gate.get("targetModel"),
+            "transitions": int(gate.get("transitions") or 0),
+            "wouldSendToVlm": int(gate.get("wouldSendToVlm") or 0),
+            "wouldSkip": int(gate.get("wouldSkip") or 0),
+            "failedTransitions": int(gate.get("failedTransitions") or 0),
+            "byDecision": gate.get("byDecision") if isinstance(gate.get("byDecision"), dict) else {},
+        },
+        "frameDiffVlm": {
+            "available": bool(vlm.get("available")),
+            "status": vlm.get("status"),
+            "modelId": vlm.get("modelId"),
+            "candidateTransitions": int(vlm.get("candidateTransitions") or 0),
+            "analyzedTransitions": int(vlm.get("analyzedTransitions") or 0),
+            "changedTransitions": int(vlm.get("changedTransitions") or 0),
+            "failedTransitions": int(vlm.get("failedTransitions") or 0),
+        }
     }
 
 
@@ -724,6 +785,7 @@ def generated_item_files(
         item_dir / "raw_outputs" / "ffprobe.json",
         item_dir / "raw_outputs" / "frame_samples.json",
         item_dir / "raw_outputs" / "frame_ocr.json",
+        item_dir / "raw_outputs" / "frame_diff_vlm.json",
         item_dir / "raw_outputs" / "audio_analysis.json",
         item_dir / "raw_outputs" / "activity_map.json",
     ]
@@ -922,6 +984,69 @@ def frame_ocr_events(frame_ocr: dict[str, Any] | None) -> list[dict[str, Any]]:
     return events
 
 
+def frame_transition_gate_events(frame_samples: dict[str, Any] | None) -> list[dict[str, Any]]:
+    gate = frame_transition_gate_payload(frame_samples)
+    if not gate:
+        return []
+    events: list[dict[str, Any]] = []
+    for transition in gate.get("transitions", []):
+        if not isinstance(transition, dict):
+            continue
+        events.append(
+            {
+                "eventType": "frame_transition_gate",
+                "startSec": transition.get("fromTimeSec"),
+                "endSec": transition.get("toTimeSec"),
+                "fromFrameId": transition.get("fromFrameId"),
+                "toFrameId": transition.get("toFrameId"),
+                "ok": bool(transition.get("ok")),
+                "decision": transition.get("decision"),
+                "wouldSendToVlm": bool(transition.get("wouldSendToVlm")),
+                "reasons": transition.get("reasons") if isinstance(transition.get("reasons"), list) else [],
+                "metrics": {
+                    "raw": transition.get("raw") if isinstance(transition.get("raw"), dict) else {},
+                    "masked": transition.get("masked") if isinstance(transition.get("masked"), dict) else {},
+                },
+                "source": "frame_transition_gate",
+                "targetModel": gate.get("targetModel"),
+            }
+        )
+    return events
+
+
+def frame_diff_vlm_events(frame_diff_vlm: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if not frame_diff_vlm:
+        return []
+    model = frame_diff_vlm.get("model") if isinstance(frame_diff_vlm.get("model"), dict) else {}
+    events: list[dict[str, Any]] = []
+    for transition in frame_diff_vlm.get("transitions", []):
+        if not isinstance(transition, dict):
+            continue
+        if transition.get("status") not in {"completed", "failed"}:
+            continue
+        events.append(
+            {
+                "eventType": "frame_diff_vlm",
+                "startSec": transition.get("startSec"),
+                "endSec": transition.get("endSec"),
+                "fromFrameId": transition.get("fromFrameId"),
+                "toFrameId": transition.get("toFrameId"),
+                "ok": bool(transition.get("ok")),
+                "status": transition.get("status"),
+                "changed": transition.get("changed"),
+                "changeLevel": transition.get("changeLevel"),
+                "summary": transition.get("summary") or "",
+                "differences": transition.get("differences") if isinstance(transition.get("differences"), list) else [],
+                "confidence": transition.get("confidence"),
+                "gate": transition.get("gate") if isinstance(transition.get("gate"), dict) else {},
+                "inputFrames": transition.get("inputFrames") if isinstance(transition.get("inputFrames"), dict) else {},
+                "modelId": model.get("modelId"),
+                "source": "frame_diff_vlm",
+            }
+        )
+    return events
+
+
 def audio_speech_events(audio_analysis: dict[str, Any] | None) -> list[dict[str, Any]]:
     if not audio_analysis:
         return []
@@ -1040,6 +1165,73 @@ def frame_visual_summary(frame_ocr: dict[str, Any] | None) -> dict[str, Any]:
             for frame in frames
         ]
     )
+
+
+def frame_transition_gate_payload(frame_samples: dict[str, Any] | None) -> dict[str, Any]:
+    if not frame_samples or not isinstance(frame_samples.get("visualGate"), dict):
+        return {}
+    return frame_samples["visualGate"]
+
+
+def frame_transition_gate_summary(frame_samples: dict[str, Any] | None) -> dict[str, Any]:
+    gate = frame_transition_gate_payload(frame_samples)
+    if not gate:
+        return {
+            "available": False,
+            "targetModel": None,
+            "strategy": None,
+            "transitions": 0,
+            "wouldSendToVlm": 0,
+            "wouldSkip": 0,
+            "failedTransitions": 0,
+            "byDecision": {},
+            "warnings": [],
+        }
+    counts = gate.get("counts") if isinstance(gate.get("counts"), dict) else {}
+    return {
+        "available": bool(gate.get("available")),
+        "targetModel": gate.get("targetModel"),
+        "strategy": gate.get("strategy"),
+        "transitions": int(counts.get("transitions") or 0),
+        "wouldSendToVlm": int(counts.get("wouldSendToVlm") or 0),
+        "wouldSkip": int(counts.get("wouldSkip") or 0),
+        "failedTransitions": int(counts.get("failedTransitions") or 0),
+        "byDecision": counts.get("byDecision") if isinstance(counts.get("byDecision"), dict) else {},
+        "warnings": gate.get("warnings") if isinstance(gate.get("warnings"), list) else [],
+    }
+
+
+def frame_diff_vlm_summary(frame_diff_vlm: dict[str, Any] | None) -> dict[str, Any]:
+    if not frame_diff_vlm:
+        return {
+            "available": False,
+            "status": None,
+            "mode": None,
+            "modelId": None,
+            "candidateTransitions": 0,
+            "analyzedTransitions": 0,
+            "skippedTransitions": 0,
+            "failedTransitions": 0,
+            "changedTransitions": 0,
+            "unchangedTransitions": 0,
+            "warnings": [],
+        }
+    counts = frame_diff_vlm.get("counts") if isinstance(frame_diff_vlm.get("counts"), dict) else {}
+    model = frame_diff_vlm.get("model") if isinstance(frame_diff_vlm.get("model"), dict) else {}
+    analyzed = int(counts.get("analyzedTransitions") or 0)
+    return {
+        "available": analyzed > 0,
+        "status": frame_diff_vlm.get("status"),
+        "mode": frame_diff_vlm.get("mode"),
+        "modelId": model.get("modelId"),
+        "candidateTransitions": int(counts.get("candidateTransitions") or 0),
+        "analyzedTransitions": analyzed,
+        "skippedTransitions": int(counts.get("skippedTransitions") or 0),
+        "failedTransitions": int(counts.get("failedTransitions") or 0),
+        "changedTransitions": int(counts.get("changedTransitions") or 0),
+        "unchangedTransitions": int(counts.get("unchangedTransitions") or 0),
+        "warnings": frame_diff_vlm.get("warnings") if isinstance(frame_diff_vlm.get("warnings"), list) else [],
+    }
 
 
 def frame_visual_summary_from_entries(frames: list[dict[str, Any]]) -> dict[str, Any]:
@@ -1177,6 +1369,7 @@ def output_file_entries(paths: dict[str, str]) -> list[dict[str, Any]]:
         ("ffprobe_raw", "ffprobeJson"),
         ("frame_samples", "frameSamplesJson"),
         ("frame_ocr", "frameOcrJson"),
+        ("frame_diff_vlm", "frameDiffVlmJson"),
         ("audio_analysis", "audioAnalysisJson"),
         ("activity_map", "activityMapJson"),
         ("contact_sheet", "contactSheet"),

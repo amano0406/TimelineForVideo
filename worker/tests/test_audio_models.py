@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from timeline_for_video_worker.audio_models import (
     diarization_activity_spans,
+    MAX_DIARIZATION_ACTIVITY_SPANS,
     run_diarization,
     run_audio_reference_models,
     run_whisper_transcription,
@@ -30,7 +31,7 @@ class AudioModelTests(unittest.TestCase):
                     audio_path=audio_path,
                     speech_candidates=[{"startSec": 0.0, "endSec": 1.0, "durationSec": 1.0}],
                     source_name="clip.mp4",
-                    settings={"computeMode": "cpu", "huggingFaceToken": ""},
+                    settings={"computeMode": "cpu", "huggingfaceToken": ""},
                     mode="auto",
                 )
 
@@ -53,7 +54,7 @@ class AudioModelTests(unittest.TestCase):
                     audio_path=audio_path,
                     speech_candidates=[],
                     source_name="clip.mp4",
-                    settings={"computeMode": "cpu", "huggingFaceToken": ""},
+                    settings={"computeMode": "cpu", "huggingfaceToken": ""},
                 )
 
             self.assertFalse(result["ok"])
@@ -96,7 +97,7 @@ class AudioModelTests(unittest.TestCase):
                         audio_path=audio_path,
                         speech_candidates=[],
                         source_name="clip.mp4",
-                        settings={"computeMode": "gpu", "huggingFaceToken": "token"},
+                        settings={"computeMode": "gpu", "huggingfaceToken": "token"},
                     )
 
             self.assertFalse(result["ok"])
@@ -199,7 +200,7 @@ class AudioModelTests(unittest.TestCase):
                                 audio_path=audio_path,
                                 speech_candidates=[],
                                 source_name="silent.mp4",
-                                settings={"computeMode": "cpu", "huggingFaceToken": "token"},
+                                settings={"computeMode": "cpu", "huggingfaceToken": "token"},
                             )
 
             self.assertTrue(result["ok"])
@@ -363,6 +364,46 @@ class AudioModelTests(unittest.TestCase):
         self.assertEqual(result["scope"]["activeSec"], 4.0)
         self.assertEqual(result["turns"][0]["start"], 10.0)
         self.assertEqual(result["turns"][0]["end"], 11.5)
+
+    def test_run_diarization_uses_full_audio_when_candidate_spans_are_many(self) -> None:
+        class FakeSegment:
+            start = 1.0
+            end = 2.5
+
+        class FakeAnnotation:
+            def itertracks(self, yield_label: bool = False):
+                yield FakeSegment(), None, "SPEAKER_00"
+
+        class FakePipeline:
+            def __init__(self) -> None:
+                self.received = []
+
+            def __call__(self, payload):
+                self.received.append(payload)
+                return FakeAnnotation()
+
+        pipeline = FakePipeline()
+        audio_input = {"waveform": object(), "sample_rate": 16000}
+        speech_candidates = [
+            {"startSec": float(index * 10), "endSec": float(index * 10) + 1.0}
+            for index in range(MAX_DIARIZATION_ACTIVITY_SPANS + 1)
+        ]
+
+        with patch("timeline_for_video_worker.audio_models.load_diarization_pipeline", return_value=pipeline):
+            with patch("timeline_for_video_worker.audio_models.load_diarization_audio_input", return_value=audio_input) as load_audio:
+                result = run_diarization(
+                    Path("normalized_audio.wav"),
+                    token="token",
+                    compute_mode="cpu",
+                    source_name="clip.mp4",
+                    speech_candidates=speech_candidates,
+                )
+
+        self.assertEqual(len(pipeline.received), 1)
+        load_audio.assert_called_once_with(Path("normalized_audio.wav"))
+        self.assertEqual(result["scope"]["mode"], "full_audio_many_speech_candidates")
+        self.assertEqual(result["scope"]["spans"], MAX_DIARIZATION_ACTIVITY_SPANS + 1)
+        self.assertEqual(result["turns"][0]["start"], 1.0)
 
 
 if __name__ == "__main__":

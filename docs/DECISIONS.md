@@ -32,13 +32,18 @@ outputs, or included in exports.
 ## 6. v1 Analysis Scope
 
 For v1, capture metadata, bounded visual samples, local OCR over generated frame
-images, and source-safe audio evidence.
+images, cheap adjacent-frame visual transition metrics, optional local
+frame-difference VLM evidence, and source-safe audio evidence.
 
 Frame OCR follows the `TimelineForImage` processing contract but is implemented
 inside this repository. Video audio follows `TimelineForAudio` behavior,
 including pyannote diarization and faster-whisper transcription execution paths, but is
 implemented inside this repository. Do not import or share source code between
 Timeline products.
+
+Frame-difference VLM processing is allowed only as local Hugging Face model
+execution over extracted adjacent frame artifacts. The cheap visual gate must
+skip confidently unchanged or volatile-only transitions before the VLM stage.
 
 Do not implement scene detection, face recognition, person recognition, or
 external analysis APIs in v1.

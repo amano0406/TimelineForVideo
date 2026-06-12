@@ -34,6 +34,8 @@ Build:
 - ffprobe metadata capture
 - bounded frame sampling
 - extracted review frames
+- cheap adjacent-frame visual transition gate
+- optional local frame-difference VLM analysis over generated adjacent frames
 - local OCR over generated frame images, following the TimelineForImage
   processing contract inside this repo
 - source-safe audio derivative analysis plus pyannote/faster-whisper audio-model execution
@@ -51,7 +53,7 @@ Do not build in v1:
 - old TimelineForVideo compatibility layer
 - scene detection
 - face/person recognition
-- external API analysis
+- external API analysis or hosted VLM calls
 - source video conversion
 
 ## Reference Sources

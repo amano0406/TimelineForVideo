@@ -85,3 +85,13 @@
 - add internal catalog, lock, run status, and skip-no-changes behavior
 - expose run inspection through API/debug output
 - document the remaining parity gaps in `docs/VIDEO_REBUILD_TODO.md`
+
+## Milestone 10: Local Frame Difference VLM
+
+- add cheap adjacent-frame visual gate into `raw_outputs/frame_samples.json`
+- skip confidently unchanged or volatile-only transitions before heavy model work
+- add optional local Hugging Face VLM analysis under `raw_outputs/frame_diff_vlm.json`
+- expose VLM-derived transition events in `timeline.json`
+- include VLM counts and output file paths in `convert_info.json`
+- keep the API surface on existing refresh/model endpoints
+- verify temporary Docker images, containers, and volumes are removed after validation

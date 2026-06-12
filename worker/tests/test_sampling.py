@@ -128,6 +128,9 @@ class SamplingTests(unittest.TestCase):
             self.assertEqual(saved["schemaVersion"], "timeline_for_video.frame_samples.v1")
             self.assertIs(saved["sourceVideoModified"], False)
             self.assertEqual(saved["counts"]["requestedFrames"], 3)
+            self.assertEqual(saved["visualGate"]["schemaVersion"], "timeline_for_video.frame_transition_gate.v1")
+            self.assertEqual(saved["visualGate"]["counts"]["transitions"], 2)
+            self.assertEqual(saved["visualGate"]["counts"]["failedTransitions"], 2)
 
     def test_sample_video_files_returns_structured_error_when_ffmpeg_missing(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

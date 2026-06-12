@@ -28,6 +28,7 @@ from .processor import write_run_status
 from .sampling import DEFAULT_SAMPLES_PER_VIDEO
 from .probe import utc_now_iso
 from .settings import PRODUCT_NAME
+from .settings import TOKEN_SETTING_KEY
 from .settings import internal_state_root
 from .settings import load_example_settings
 from .settings import load_settings
@@ -138,10 +139,10 @@ def settings_save_payload(request: dict[str, Any]) -> dict[str, Any]:
     if output_root:
         settings["outputRoot"] = output_root
     if get_bool_any(request, ["clearToken", "clear_token"], False):
-        settings["huggingFaceToken"] = ""
+        settings[TOKEN_SETTING_KEY] = ""
     token = get_string_any(request, ["token", "huggingFaceToken", "huggingfaceToken"])
     if token:
-        settings["huggingFaceToken"] = token
+        settings[TOKEN_SETTING_KEY] = token
     compute_mode = get_string_any(request, ["computeMode", "compute_mode"])
     if compute_mode:
         settings["computeMode"] = compute_mode
@@ -212,6 +213,16 @@ def items_refresh_payload(request: dict[str, Any]) -> dict[str, Any]:
             or DEFAULT_SAMPLES_PER_VIDEO,
             ocr_mode=get_string_any(request, ["ocrMode", "ocr_mode"]) or "auto",
             audio_model_mode=get_string_any(request, ["audioModelMode", "audio_model_mode"]) or None,
+            frame_diff_vlm_mode=get_string_any(
+                request,
+                ["frameDiffVlmMode", "frame_diff_vlm_mode", "vlmMode", "vlm_mode"],
+            )
+            or None,
+            frame_diff_vlm_model_id=get_string_any(
+                request,
+                ["frameDiffVlmModelId", "frame_diff_vlm_model_id", "vlmModelId", "vlm_model_id"],
+            )
+            or None,
             reprocess_duplicates=get_bool_any(request, ["reprocessDuplicates", "reprocess_duplicates"], False),
             run_id=get_string_any(request, ["runId", "run_id", "jobId", "job_id"]) or None,
         )

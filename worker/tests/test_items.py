@@ -174,6 +174,41 @@ class ItemsTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
+            (sampled_item_root / "raw_outputs" / "frame_diff_vlm.json").write_text(
+                json.dumps(
+                    {
+                        "status": "completed",
+                        "mode": "required",
+                        "model": {"modelId": "Qwen/Qwen3.5-4B"},
+                        "counts": {
+                            "candidateTransitions": 1,
+                            "analyzedTransitions": 1,
+                            "skippedTransitions": 0,
+                            "failedTransitions": 0,
+                            "changedTransitions": 1,
+                            "unchangedTransitions": 0,
+                        },
+                        "transitions": [
+                            {
+                                "index": 1,
+                                "fromFrameId": "frame-000001",
+                                "toFrameId": "frame-000002",
+                                "startSec": 2.667,
+                                "endSec": 5.333,
+                                "ok": True,
+                                "status": "completed",
+                                "changed": True,
+                                "changeLevel": "meaningful",
+                                "summary": "入力欄の文字が追加された。",
+                                "differences": ["入力欄の文字が増えた"],
+                                "confidence": 0.9,
+                            }
+                        ],
+                        "warnings": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
             activity_map_path = sampled_item_root / "raw_outputs" / "activity_map.json"
             activity_map_path.write_text(
                 json.dumps(
@@ -227,18 +262,28 @@ class ItemsTests(unittest.TestCase):
             self.assertEqual(video_record["schema_version"], "timeline_for_video.video_record.v1")
             self.assertIs(video_record["asset"]["source_video_modified"], False)
             self.assertEqual(len(video_record["frames"]), 2)
+            self.assertEqual(video_record["visual"]["frame_transition_gate"]["transitions"], 1)
+            self.assertEqual(video_record["visual"]["frame_transition_gate"]["failedTransitions"], 1)
+            self.assertEqual(video_record["visual"]["frame_diff_vlm"]["changedTransitions"], 1)
             self.assertTrue(video_record["text"]["ocr"])
             self.assertEqual(video_record["text"]["blocks"][0]["text"], "frame text")
             self.assertIn("visual", timeline["lanes"])
             self.assertIn("audio", timeline["lanes"])
             self.assertIn("text", timeline["lanes"])
             self.assertIn("frame_sample", {event["eventType"] for event in timeline["lanes"]["visual"]})
+            self.assertIn("frame_transition_gate", {event["eventType"] for event in timeline["lanes"]["visual"]})
+            self.assertIn("frame_diff_vlm", {event["eventType"] for event in timeline["lanes"]["visual"]})
             self.assertIn("frame_ocr_text", {event["eventType"] for event in timeline["lanes"]["text"]})
             self.assertIn("audio_transcript_segment", {event["eventType"] for event in timeline["lanes"]["text"]})
             self.assertIn("audio_speech_candidate", {event["eventType"] for event in timeline["lanes"]["audio"]})
             self.assertIs(convert_info["source_video_modified"], False)
             self.assertEqual(convert_info["ffmpegVersion"]["versionLine"], "ffmpeg fake 1.0")
             self.assertEqual(convert_info["counts"]["frames"], 2)
+            self.assertEqual(convert_info["counts"]["frameTransitions"], 1)
+            self.assertEqual(convert_info["counts"]["frameTransitionsForVlm"], 1)
+            self.assertEqual(convert_info["counts"]["frameDiffVlmCandidates"], 1)
+            self.assertEqual(convert_info["counts"]["frameDiffVlmAnalyzed"], 1)
+            self.assertEqual(convert_info["counts"]["frameDiffVlmChanged"], 1)
             self.assertEqual(convert_info["counts"]["ocrTextBlocks"], 1)
             self.assertEqual(convert_info["counts"]["audioSpeechCandidates"], 1)
             required_outputs = {"video_record", "timeline", "convert_info", "ffprobe_raw"}
@@ -248,6 +293,8 @@ class ItemsTests(unittest.TestCase):
             listed = list_items(str(output_root))
             listed_item = listed["items"][0]
             self.assertEqual(listed_item["text"]["textBlockCount"], 1)
+            self.assertEqual(listed_item["visual"]["frameTransitionGate"]["transitions"], 1)
+            self.assertEqual(listed_item["visual"]["frameDiffVlm"]["changedTransitions"], 1)
             self.assertEqual(listed_item["audioAnalysis"]["speechCandidates"], 1)
             self.assertFalse(listed_item["audioAnalysis"]["audioArtifactIncludedInDownloadZip"])
             self.assertEqual(listed_item["activity"]["activityMapJson"], str(activity_map_path))

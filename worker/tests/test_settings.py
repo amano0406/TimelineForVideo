@@ -30,7 +30,7 @@ class SettingsTests(unittest.TestCase):
                 "schemaVersion": 1,
                 "inputRoots": ["C:\\TimelineData\\input-video"],
                 "outputRoot": "C:\\TimelineData\\video",
-                "huggingFaceToken": "",
+                "huggingfaceToken": "",
                 "computeMode": "gpu",
             },
         )
@@ -51,7 +51,7 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(settings["runtime"], {"instanceName": "abc123", "apiPort": 19500})
         self.assertEqual(
             list(settings.keys()),
-            ["schemaVersion", "runtime", "inputRoots", "outputRoot", "huggingFaceToken", "computeMode"],
+            ["schemaVersion", "runtime", "inputRoots", "outputRoot", "huggingfaceToken", "computeMode"],
         )
 
     def test_normalize_settings_rejects_invalid_runtime_port(self) -> None:
@@ -87,9 +87,14 @@ class SettingsTests(unittest.TestCase):
             },
             clear=False,
         ):
-            token = load_huggingface_token({"huggingFaceToken": "hf_settings_token"})
+            token = load_huggingface_token({"huggingfaceToken": "hf_settings_token"})
 
         self.assertEqual(token, "hf_env_token")
+
+    def test_load_huggingface_token_accepts_legacy_setting_key(self) -> None:
+        token = load_huggingface_token({"huggingFaceToken": "hf_legacy_settings_token"})
+
+        self.assertEqual(token, "hf_legacy_settings_token")
 
     def test_redact_settings_reports_token_source_without_leaking_value(self) -> None:
         with patch.dict(
@@ -106,12 +111,12 @@ class SettingsTests(unittest.TestCase):
                     "schemaVersion": 1,
                     "inputRoots": ["C:\\TimelineData\\input-video"],
                     "outputRoot": "C:\\TimelineData\\video",
-                    "huggingFaceToken": "",
+                    "huggingfaceToken": "",
                     "computeMode": "cpu",
                 }
             )
 
-        self.assertEqual(redacted["huggingFaceToken"], {"configured": True, "source": "environment"})
+        self.assertEqual(redacted["huggingfaceToken"], {"configured": True, "source": "environment"})
         self.assertNotIn("hf_env_secret", str(redacted))
 
 

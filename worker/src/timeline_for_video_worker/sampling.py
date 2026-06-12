@@ -8,6 +8,7 @@ from typing import Any, Callable
 
 from . import __version__
 from .discovery import VideoFile, resolve_configured_path
+from .frame_transition_gate import analyze_frame_transition_gate
 from .probe import analysis_source_path, command_prefix, probe_video_files, utc_now_iso
 from .settings import PRODUCT_NAME
 
@@ -18,6 +19,8 @@ PIPELINE_VERSION = "timeline_for_video.pipeline.m4"
 DEFAULT_SAMPLES_PER_VIDEO = 5
 MAX_SAMPLES_PER_VIDEO = 12
 DEFAULT_MAX_ITEMS = 1
+FRAME_SAMPLE_MAX_WIDTH = 1280
+FRAME_SAMPLE_MAX_HEIGHT = 720
 CONTACT_SHEET_THUMB_WIDTH = 320
 CONTACT_SHEET_THUMB_HEIGHT = 180
 
@@ -78,10 +81,12 @@ def run_ffmpeg_frame_extract(
         f"{time_sec:.3f}",
         "-i",
         source_path,
+        "-vf",
+        f"scale={FRAME_SAMPLE_MAX_WIDTH}:{FRAME_SAMPLE_MAX_HEIGHT}:force_original_aspect_ratio=decrease",
         "-frames:v",
         "1",
         "-q:v",
-        "2",
+        "3",
         "-y",
         str(output_path),
     ]
@@ -311,6 +316,19 @@ def sample_probe_record(
             "command": [],
             "error": None,
         },
+        "visualGate": {
+            "available": False,
+            "strategy": "cheap_visual_gate_before_vlm",
+            "targetModel": "Qwen/Qwen3.5-4B",
+            "counts": {
+                "transitions": 0,
+                "wouldSendToVlm": 0,
+                "wouldSkip": 0,
+                "failedTransitions": 0,
+            },
+            "transitions": [],
+            "warnings": [],
+        },
         "counts": {
             "requestedFrames": 0,
             "extractedFrames": 0,
@@ -363,6 +381,10 @@ def sample_probe_record(
     record["counts"]["failedFrames"] = len(sample_times) - len(extracted_paths)
     if record["counts"]["failedFrames"]:
         warnings.append("frame_extraction_failed")
+
+    record["visualGate"] = analyze_frame_transition_gate(record["frames"])
+    if record["visualGate"].get("warnings"):
+        warnings.append("visual_gate_warning")
 
     if extracted_paths:
         contact_result = run_ffmpeg_contact_sheet(extracted_paths, contact_sheet_path, ffmpeg_bin)

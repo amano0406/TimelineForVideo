@@ -6,11 +6,17 @@
 - `health` works.
 - `doctor` checks runtime and configured paths.
 - `POST /models/list` reports Audio-compatible model rows, pipeline generation
-  signature, Video runtime components, and pyannote/faster-whisper readiness.
+  signature, Video runtime components, pyannote/faster-whisper readiness, and
+  optional frame-difference VLM readiness.
 - `POST /models/list` with `includeRemote` attaches Hugging Face metadata to
   Hugging Face model rows.
 - `POST /files/list` discovers video files from file and directory inputs.
 - `POST /items/refresh` extracts bounded frame evidence.
+- `POST /items/refresh` writes cheap adjacent-frame visual transition gate evidence.
+- `POST /items/refresh` with `frameDiffVlmMode: "auto"` writes a structured
+  local VLM result or a structured skip when dependencies are unavailable.
+- `POST /items/refresh` with `frameDiffVlmMode: "required"` fails structurally
+  when VLM dependencies, model loading, or parsing fail.
 - `POST /items/refresh` writes local frame OCR evidence.
 - `POST /items/refresh` writes source-safe audio evidence.
 - `POST /items/refresh` with `audioModelMode: "required"` fails structurally when token or
@@ -31,6 +37,8 @@
 - settings tests
 - discovery tests
 - sampling tests
+- frame transition gate tests
+- frame difference VLM tests
 - frame OCR tests
 - audio analysis tests
 - audio model mode tests
